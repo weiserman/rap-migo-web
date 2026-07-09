@@ -72,14 +72,20 @@ async function executeBrokerRequest(absoluteUrl, configOptions) {
   }
 
   return {
-    status: resultWrapper.status,
-    ok: resultWrapper.status >= 200 && resultWrapper.status < 300,
+    status: resultWrapper.status || 0,
+    ok: (resultWrapper.status || 0) >= 200 && (resultWrapper.status || 0) < 300,
     headers: {
       get: (name) =>
         resultWrapper.headers ? resultWrapper.headers[name.toLowerCase()] : null,
     },
-    json: async () => JSON.parse(resultWrapper.body),
-    text: async () => resultWrapper.body,
+    json: async () => {
+      try {
+        return JSON.parse(resultWrapper.body || '{}');
+      } catch {
+        return { error: { message: 'Invalid JSON response from broker' } };
+      }
+    },
+    text: async () => resultWrapper.body || '',
   };
 }
 
@@ -116,6 +122,8 @@ async function fetchSAPCsrfToken(referenceUrl) {
  * Build a full service URL for an entity path.
  */
 function buildServiceUrl(entityPath) {
+  if (!store.config.baseHost) throw new Error('SAP Host not configured');
+  if (!store.config.poPath) throw new Error('Service Path not configured');
   const cleanBase = store.config.baseHost.endsWith('/')
     ? store.config.baseHost.slice(0, -1)
     : store.config.baseHost;
@@ -178,14 +186,24 @@ export async function odataFetch(entityPath, options = {}) {
   if (!response.ok) {
     let errorMessage = `HTTP ${response.status}`;
     try {
-      const body = await response.json();
-      if (body.error?.message?.value) {
-        errorMessage = body.error.message.value;
+      const bodyText = await response.text();
+      try {
+        const body = JSON.parse(bodyText);
+        if (body.error?.message?.value) {
+          errorMessage = body.error.message.value;
+        } else if (body.error?.message) {
+          errorMessage = typeof body.error.message === 'string' ? body.error.message : JSON.stringify(body.error.message);
+        }
+      } catch {
+        // Not JSON — use raw text (truncated)
+        if (bodyText) {
+          errorMessage = `${errorMessage}: ${bodyText.substring(0, 200)}`;
+        }
       }
     } catch {
-      // Use default error message
+      // Could not read response body
     }
-    throw new Error(errorMessage);
+    throw new Error(`${errorMessage} [${absoluteUrl}]`);
   }
 
   return await response.json();

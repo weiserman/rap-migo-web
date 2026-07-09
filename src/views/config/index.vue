@@ -73,6 +73,13 @@ function save() {
 
 async function testConnection() {
   testResult.value = null;
+
+  // Validate configuration before testing
+  if (!form.baseHost || !form.poPath) {
+    testResult.value = { ok: false, message: 'SAP Host and Service Path are required.' };
+    return;
+  }
+
   try {
     const { count } = await EntityService.getDeliveriesList(form.plant, { top: 1 });
     testResult.value = { ok: true, message: `Connected. ${count} PO(s) found.` };

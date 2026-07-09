@@ -28,11 +28,11 @@
         <span>{{ error }}</span>
       </div>
 
-      <div v-if="store.cache.poHistory.length > 0">
+      <div v-if="poHistory.length > 0">
         <div class="section-label">RECENT</div>
         <div class="list-group">
           <div
-            v-for="po in store.cache.poHistory"
+            v-for="po in poHistory"
             :key="po.PurchaseOrder"
             class="list-item"
             @click="openFromHistory(po)"
@@ -58,7 +58,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue';
+import { ref, computed, onMounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import MenuTop from '../../components/menutop/index.vue';
 import { store, storeActions } from '../../util/store.js';
@@ -69,6 +69,7 @@ const poInput = ref(null);
 const poNumber = ref('');
 const loading = ref(false);
 const error = ref('');
+const poHistory = computed(() => store.cache.poHistory || []);
 
 onMounted(() => {
   nextTick(() => poInput.value?.focus());

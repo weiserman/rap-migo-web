@@ -67,9 +67,17 @@ function removeItem(idx) {
 async function postAll() {
   if (!selectedPO.value || stagingList.value.length === 0) return;
 
-  const confirmed = await confirm(
-    `Post ${stagingList.value.length} item(s) as goods receipts?\n\nThis action cannot be undone.`
-  );
+  let confirmed = false;
+  try {
+    confirmed = await confirm(
+      `Post ${stagingList.value.length} item(s) as goods receipts?\n\nThis action cannot be undone.`
+    );
+  } catch {
+    // Dialog system may not be initialized; fall back to native
+    confirmed = window.confirm
+      ? window.confirm(`Post ${stagingList.value.length} item(s)?`)
+      : false;
+  }
   if (!confirmed) return;
 
   posting.value = true;

@@ -2,7 +2,7 @@
  * Entity normalizers and service layer for ZUI_MIGO_GR_V4.
  * Maps SAP CDS entity fields to frontend-friendly objects.
  */
-import { odataFetch, odataBatch } from './odata.js';
+import { odataFetch, odataBatch, generateId } from './odata.js';
 import { store } from './store.js';
 
 // ─── Normalizers ──────────────────────────────────────────
@@ -191,7 +191,7 @@ export const EntityService = {
 
 function buildGRBody(stagingItem, poHeader) {
   return {
-    PostingID: crypto.randomUUID().replace(/-/g, ''),
+    PostingID: generateId(),
     PurchaseOrder: poHeader.PurchaseOrder,
     PurchaseOrderItem: stagingItem.PurchaseOrderItem,
     Material: stagingItem.Material,

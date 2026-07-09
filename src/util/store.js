@@ -41,6 +41,7 @@ const getInitialState = () => {
     const parsed = JSON.parse(saved);
     // Merge with defaults for schema migration
     parsed.config = { ...defaultState.config, ...(parsed.config || {}) };
+    parsed.cache = { ...defaultState.cache, ...(parsed.cache || {}) };
     parsed.user.isLoggedIn = false;
     return parsed;
   } catch {

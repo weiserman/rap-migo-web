@@ -5,12 +5,6 @@
       <div class="object-header">
         <div class="object-header-title">Goods Receipt Scanner</div>
         <div class="object-header-subtitle">Plant {{ store.plant }}</div>
-        <div class="object-header-attrs">
-          <span class="info-label">
-            <span class="info-label-dot dot-info"></span>
-            {{ store.config.baseHost }}
-          </span>
-        </div>
       </div>
 
       <div v-if="stagingCount > 0" class="message-strip strip-info">

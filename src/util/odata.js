@@ -9,6 +9,20 @@ let stableSessionCookies = '';
 const BROKER_URL = '/api/net/request';
 
 /**
+ * Generate a random hex ID. Falls back to Math.random when crypto.randomUUID
+ * is unavailable (older WebViews, non-secure contexts).
+ */
+export function generateId() {
+  try {
+    return crypto.randomUUID().replace(/-/g, '');
+  } catch {
+    return Array.from({ length: 32 }, () =>
+      Math.floor(Math.random() * 16).toString(16)
+    ).join('');
+  }
+}
+
+/**
  * Build a detailed OData error with all available diagnostic information.
  * Produces a multi-line diagnostic string that includes every available
  * piece of information from the failed request.
@@ -378,7 +392,7 @@ export async function odataFetch(entityPath, options = {}) {
 export async function odataBatch(entityPath, requests) {
   if (!requests || requests.length === 0) return [];
 
-  const boundary = 'batch_' + crypto.randomUUID().replace(/-/g, '');
+  const boundary = 'batch_' + generateId();
   const batchUrl = buildServiceUrl('$batch');
   const serviceBase = buildServiceUrl(entityPath).split('?')[0]; // strip $format=json
 

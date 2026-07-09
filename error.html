@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Navigation Error</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background-color: #121212; color: #ff4d4d; font-family: -apple-system, BlinkMacSystemFont, sans-serif; text-align: center; padding: 60px 24px; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        h1 { font-size: 1.8rem; margin-bottom: 12px; }
+        p { color: #a0a0a0; font-size: 1rem; margin-bottom: 16px; line-height: 1.5; }
+        .badge { display: inline-block; background: #1e1e1e; border: 1px solid #333; border-radius: 6px; padding: 4px 10px; font-size: 0.75rem; color: #666; margin-bottom: 24px; }
+        .btn-retry { display: inline-block; background-color: #1e1e1e; color: #fff; padding: 12px 28px; border: 1px solid #444; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 1rem; transition: background 0.2s; }
+        .btn-retry:active { background-color: #2a2a2a; }
+        .steps { text-align: left; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px; padding: 16px 20px; margin-top: 24px; max-width: 340px; width: 100%; }
+        .steps h3 { color: #ccc; font-size: 0.85rem; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+        .steps ol { color: #888; font-size: 0.85rem; padding-left: 18px; }
+        .steps li { margin-bottom: 6px; }
+    </style>
+</head>
+<body>
+    <h1>MIGO GR Scanner</h1>
+    <p>The application could not be loaded.</p>
+    <span class="badge">baked in · APK Tier 3</span>
+    <a href="file:///android_asset/index.html" class="btn-retry">Retry</a>
+    <div class="steps">
+        <h3>If this persists</h3>
+        <ol>
+            <li>Open maintenance panel (Vol Up + Down)</li>
+            <li>Check update URL is configured</li>
+            <li>Tap "Download" to fetch latest web app</li>
+            <li>Or push www/ via ADB to external storage</li>
+        </ol>
+    </div>
+</body>
+</html>

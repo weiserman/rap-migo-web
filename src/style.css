@@ -1,0 +1,341 @@
+/* MIGO GR Scanner — Global Styles */
+:root {
+  --color-primary: #1565c0;
+  --color-primary-dark: #0d47a1;
+  --color-success: #2e7d32;
+  --color-error: #c62828;
+  --color-warning: #ef6c00;
+  --color-bg: #f5f5f5;
+  --color-surface: #ffffff;
+  --color-text: #212121;
+  --color-text-secondary: #757575;
+  --color-border: #e0e0e0;
+  --radius: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.12);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.minimal-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Page Layout ────────────────────── */
+.page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.page-content {
+  flex: 1;
+  padding: 16px;
+  padding-top: 64px;
+}
+
+/* ─── Cards ──────────────────────────── */
+.card {
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.card-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.card-subtitle {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+/* ─── Buttons ────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 20px;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  gap: 8px;
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  color: white;
+}
+.btn-primary:hover {
+  background: var(--color-primary-dark);
+}
+.btn-primary:disabled {
+  background: #90caf9;
+  cursor: not-allowed;
+}
+
+.btn-success {
+  background: var(--color-success);
+  color: white;
+}
+
+.btn-error {
+  background: var(--color-error);
+  color: white;
+}
+
+.btn-outline {
+  background: transparent;
+  border: 2px solid var(--color-primary);
+  color: var(--color-primary);
+}
+
+.btn-block {
+  width: 100%;
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+/* ─── Forms ──────────────────────────── */
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: 4px;
+}
+
+.form-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-size: 15px;
+  outline: none;
+  transition: border 0.15s;
+}
+
+.form-input:focus {
+  border-color: var(--color-primary);
+}
+
+/* ─── Lists ──────────────────────────── */
+.list-item {
+  display: flex;
+  align-items: center;
+  padding: 14px 16px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.list-item:hover {
+  background: #f0f4f8;
+}
+
+.list-item:active {
+  background: #e3f2fd;
+}
+
+.list-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.list-item-title {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.list-item-desc {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.list-item-badge {
+  margin-left: 12px;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* ─── Quantity Stepper ──────────────── */
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.stepper-btn {
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  font-size: 20px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.stepper-btn:first-child {
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+
+.stepper-btn:last-child {
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.stepper-value {
+  width: 60px;
+  height: 40px;
+  text-align: center;
+  border: 1px solid var(--color-border);
+  border-left: none;
+  border-right: none;
+  font-size: 16px;
+  font-weight: 600;
+  outline: none;
+}
+
+/* ─── Status Badges ──────────────────── */
+.badge-open {
+  background: #e3f2fd;
+  color: var(--color-primary);
+}
+
+.badge-complete {
+  background: #e8f5e9;
+  color: var(--color-success);
+}
+
+.badge-error {
+  background: #ffebee;
+  color: var(--color-error);
+}
+
+.badge-pending {
+  background: #fff3e0;
+  color: var(--color-warning);
+}
+
+/* ─── Empty State ────────────────────── */
+.empty-state {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--color-text-secondary);
+}
+
+.empty-state-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+/* ─── Progress ───────────────────────── */
+.progress-bar {
+  height: 4px;
+  background: var(--color-border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin: 12px 0;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: var(--color-primary);
+  transition: width 0.3s;
+}
+
+/* ─── Results ────────────────────────── */
+.result-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.result-icon {
+  width: 24px;
+  height: 24px;
+  margin-right: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.result-success .result-icon {
+  color: var(--color-success);
+}
+
+.result-error .result-icon {
+  color: var(--color-error);
+}
+
+/* ─── Loading ────────────────────────── */
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.loading-spinner {
+  background: var(--color-surface);
+  padding: 24px 32px;
+  border-radius: var(--radius);
+  text-align: center;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 12px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

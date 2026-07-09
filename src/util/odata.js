@@ -147,6 +147,28 @@ async function executeBrokerRequest(absoluteUrl, configOptions) {
   if (!brokerResponse.ok) {
     let brokerBody = '';
     try { brokerBody = await brokerResponse.text(); } catch {}
+
+    // Build a diagnostic cause message with the target SAP URL
+    const targetHost = store.config.baseHost || '(not set)';
+    const causeParts = [
+      `NetController failed to proxy ${method} request to SAP server.`,
+      `Target: ${targetHost}`,
+    ];
+
+    // Check for common broker 500 causes in response body
+    if (brokerBody) {
+      const bodyLower = brokerBody.toLowerCase();
+      if (bodyLower.includes('ssl') || bodyLower.includes('certificate') || bodyLower.includes('handshake')) {
+        causeParts.push('Likely cause: SSL/TLS certificate validation failure. Check if SAP server uses self-signed certs.');
+      } else if (bodyLower.includes('timeout') || bodyLower.includes('timed out')) {
+        causeParts.push(`Likely cause: Network timeout (current: ${store.config.networkTimeoutMs || 15000}ms). SAP server did not respond.`);
+      } else if (bodyLower.includes('dns') || bodyLower.includes('resolve') || bodyLower.includes('unknownhost')) {
+        causeParts.push(`Likely cause: DNS resolution failure. Device cannot resolve hostname: ${targetHost}`);
+      } else if (bodyLower.includes('connect') && bodyLower.includes('refused')) {
+        causeParts.push(`Likely cause: Connection refused. Check SAP server URL and port.`);
+      }
+    }
+
     throw new Error(
       buildODataError({
         method,
@@ -154,7 +176,7 @@ async function executeBrokerRequest(absoluteUrl, configOptions) {
         status: brokerResponse.status,
         body: brokerBody,
         phase: 'Broker',
-        cause: `AHM broker proxy returned HTTP ${brokerResponse.status}. The native proxy layer is unavailable.`,
+        cause: causeParts.join('\n'),
       })
     );
   }

@@ -94,13 +94,14 @@ defineExpose({ clearAll });
   min-height: 60px;
 }
 .pin-title {
-  font-size: 22px;
+  font-size: 20px;
+  font-weight: 600;
   color: var(--color-text);
   margin: 0 0 8px 0;
 }
 .pin-error {
   color: var(--color-error);
-  font-size: 14px;
+  font-size: 13px;
   margin: 0;
 }
 .pin-dots {
@@ -109,8 +110,8 @@ defineExpose({ clearAll });
   margin-bottom: 50px;
 }
 .pin-dot {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   border: 2px solid var(--color-border);
   transition: all 0.1s ease;
@@ -118,20 +119,20 @@ defineExpose({ clearAll });
 .pin-dot.is-active {
   background-color: var(--color-primary);
   border-color: var(--color-primary);
-  transform: scale(1.1);
+  transform: scale(1.15);
 }
 .pin-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 20px;
+  gap: 16px;
   width: 100%;
 }
 .grid-btn {
   aspect-ratio: 1 / 1;
   border-radius: 50%;
-  border: none;
+  border: 1px solid var(--color-border);
   background-color: var(--color-surface);
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 500;
   color: var(--color-text);
   cursor: pointer;
@@ -139,16 +140,20 @@ defineExpose({ clearAll });
   align-items: center;
   justify-content: center;
   outline: none;
-  transition: background-color 0.1s ease;
+  transition: background-color 0.1s ease, border-color 0.1s ease;
 }
 .grid-btn:active {
-  background-color: var(--color-border);
+  background-color: var(--fiori-blue-light);
+  border-color: var(--color-primary);
 }
 .functional-btn {
-  font-size: 20px;
+  font-size: 18px;
   background-color: transparent;
+  border-color: transparent;
+  color: var(--color-text-secondary);
 }
 .functional-btn:active {
-  background-color: var(--color-bg);
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--color-text);
 }
 </style>

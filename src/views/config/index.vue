@@ -30,11 +30,13 @@
       <button class="btn btn-primary btn-block" @click="save">Save Configuration</button>
 
       <div style="margin-top: 24px">
-        <button class="btn btn-outline btn-block" @click="testConnection">Test Connection</button>
+        <button class="btn btn-outline btn-block" @click="testConnection" :disabled="testing">
+          {{ testing ? 'Testing...' : 'Test Connection' }}
+        </button>
       </div>
 
       <div v-if="testResult" style="margin-top: 12px" class="card">
-        <div :class="testResult.ok ? 'badge-complete' : 'badge-error'" style="padding: 8px; border-radius: 4px; text-align: center">
+        <div :class="testResult.ok ? 'badge-complete' : 'badge-error'" style="padding: 8px; border-radius: 4px; text-align: left; word-break: break-word; font-size: 0.85rem; line-height: 1.5">
           {{ testResult.message }}
         </div>
       </div>
@@ -59,6 +61,7 @@ const form = reactive({
 });
 
 const testResult = ref(null);
+const testing = ref(false);
 
 function save() {
   storeActions.saveODataConfig(
@@ -73,18 +76,31 @@ function save() {
 
 async function testConnection() {
   testResult.value = null;
+  testing.value = true;
 
   // Validate configuration before testing
   if (!form.baseHost || !form.poPath) {
     testResult.value = { ok: false, message: 'SAP Host and Service Path are required.' };
+    testing.value = false;
     return;
   }
 
+  // Save config first so the OData client uses latest values
+  storeActions.saveODataConfig(
+    form.baseHost, form.poPath, form.poPath,
+    form.username, form.password,
+    form.networkTimeoutMs, store.config.sapClient
+  );
+  storeActions.setPlant(form.plant);
+  resetCsrfToken();
+
   try {
     const { count } = await EntityService.getDeliveriesList(form.plant, { top: 1 });
-    testResult.value = { ok: true, message: `Connected. ${count} PO(s) found.` };
+    testResult.value = { ok: true, message: `Connected successfully. ${count} PO(s) found for plant ${form.plant}.` };
   } catch (err) {
-    testResult.value = { ok: false, message: `Failed: ${err.message}` };
+    testResult.value = { ok: false, message: err.message || 'Unknown error' };
+  } finally {
+    testing.value = false;
   }
 }
 </script>

@@ -9,9 +9,70 @@ let stableSessionCookies = '';
 const BROKER_URL = '/api/net/request';
 
 /**
+ * Build a detailed OData error with all available diagnostic information.
+ */
+function buildODataError({ method, url, status, statusText, body, phase, cause }) {
+  const parts = [];
+
+  // Phase indicator (where the failure occurred)
+  if (phase) parts.push(`[${phase}]`);
+
+  // HTTP status
+  if (status !== undefined && status !== null) {
+    parts.push(`${method || 'GET'} ${status}${statusText ? ' ' + statusText : ''}`);
+  }
+
+  // URL (truncated for display)
+  if (url) {
+    const shortUrl = url.length > 120 ? url.substring(0, 117) + '...' : url;
+    parts.push(shortUrl);
+  }
+
+  // Error message from response body
+  if (body) {
+    try {
+      const parsed = JSON.parse(body);
+      // OData V4 error format
+      if (parsed.error) {
+        const msg = parsed.error.message;
+        if (msg?.value) {
+          parts.push(`— ${msg.value}`);
+        } else if (typeof msg === 'string') {
+          parts.push(`— ${msg}`);
+        } else if (msg) {
+          parts.push(`— ${JSON.stringify(msg)}`);
+        }
+        // Include error code if present
+        if (parsed.error.code) {
+          parts.push(`(code: ${parsed.error.code})`);
+        }
+      } else {
+        // Non-OData error body
+        const truncated = body.length > 300 ? body.substring(0, 300) + '...' : body;
+        parts.push(`— ${truncated}`);
+      }
+    } catch {
+      // Not JSON — show raw text
+      const truncated = body.length > 300 ? body.substring(0, 300) + '...' : body;
+      if (truncated) parts.push(`— ${truncated}`);
+    }
+  }
+
+  // Underlying cause
+  if (cause) {
+    parts.push(`(cause: ${cause})`);
+  }
+
+  return parts.join(' ');
+}
+
+/**
  * Execute a request through the AHM broker proxy.
+ * Returns a normalized response object with diagnostic info.
  */
 async function executeBrokerRequest(absoluteUrl, configOptions) {
+  const method = (configOptions.method || 'GET').toUpperCase();
+
   const normalizedHeaders = {
     Accept: configOptions.headers.get('Accept') || 'application/json',
   };
@@ -38,7 +99,7 @@ async function executeBrokerRequest(absoluteUrl, configOptions) {
     timeout_ms: store.config.networkTimeoutMs || 15000,
     request: {
       url: absoluteUrl,
-      method: (configOptions.method || 'GET').toUpperCase(),
+      method: method,
       headers: normalizedHeaders,
     },
   };
@@ -50,13 +111,56 @@ async function executeBrokerRequest(absoluteUrl, configOptions) {
         : JSON.stringify(configOptions.body);
   }
 
-  const brokerResponse = await fetch(BROKER_URL, {
-    method: 'POST',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify(envelope),
-  });
+  // Phase 1: Broker fetch (network-level)
+  let brokerResponse;
+  try {
+    brokerResponse = await fetch(BROKER_URL, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(envelope),
+    });
+  } catch (err) {
+    throw new Error(
+      buildODataError({
+        method,
+        url: absoluteUrl,
+        phase: 'Network',
+        cause: `Broker proxy unreachable (${err.message}). Is the AHM framework loaded?`,
+      })
+    );
+  }
 
-  const resultWrapper = await brokerResponse.json();
+  // Phase 2: Parse broker response
+  let resultWrapper;
+  try {
+    resultWrapper = await brokerResponse.json();
+  } catch (err) {
+    const rawText = await brokerResponse.text().catch(() => '');
+    throw new Error(
+      buildODataError({
+        method,
+        url: absoluteUrl,
+        status: brokerResponse.status,
+        phase: 'Broker',
+        body: rawText,
+        cause: `Broker returned non-JSON response (${err.message})`,
+      })
+    );
+  }
+
+  // Check if broker itself returned an error (distinct from SAP error)
+  if (resultWrapper.error && !resultWrapper.status) {
+    throw new Error(
+      buildODataError({
+        method,
+        url: absoluteUrl,
+        phase: 'Broker',
+        body: typeof resultWrapper.error === 'string'
+          ? resultWrapper.error
+          : JSON.stringify(resultWrapper.error),
+      })
+    );
+  }
 
   // Capture cookies from response
   if (resultWrapper.headers) {
@@ -71,21 +175,26 @@ async function executeBrokerRequest(absoluteUrl, configOptions) {
     }
   }
 
+  const status = resultWrapper.status || 0;
+  const bodyText = resultWrapper.body || '';
+
   return {
-    status: resultWrapper.status || 0,
-    ok: (resultWrapper.status || 0) >= 200 && (resultWrapper.status || 0) < 300,
+    status,
+    ok: status >= 200 && status < 300,
+    method,
+    url: absoluteUrl,
     headers: {
       get: (name) =>
         resultWrapper.headers ? resultWrapper.headers[name.toLowerCase()] : null,
     },
     json: async () => {
       try {
-        return JSON.parse(resultWrapper.body || '{}');
+        return JSON.parse(bodyText || '{}');
       } catch {
-        return { error: { message: 'Invalid JSON response from broker' } };
+        return { error: { message: 'Invalid JSON in response body' } };
       }
     },
-    text: async () => resultWrapper.body || '',
+    text: async () => bodyText,
   };
 }
 
@@ -147,10 +256,11 @@ function buildServiceUrl(entityPath) {
  */
 export async function odataFetch(entityPath, options = {}) {
   const absoluteUrl = buildServiceUrl(entityPath);
+  const method = (options.method || 'GET').toUpperCase();
   const headers = new Headers(options.headers || {});
   headers.set('Accept', 'application/json');
 
-  if (options.method && options.method !== 'GET') {
+  if (method !== 'GET' && method !== 'HEAD') {
     headers.set('Content-Type', 'application/json');
   }
 
@@ -159,8 +269,7 @@ export async function odataFetch(entityPath, options = {}) {
     headers.set('Authorization', `Basic ${btoa(`${username}:${password || ''}`)}`);
   }
 
-  const isModifying =
-    options.method && options.method !== 'GET' && options.method !== 'HEAD';
+  const isModifying = method !== 'GET' && method !== 'HEAD';
 
   if (isModifying) {
     if (!cachedCsrfToken) {
@@ -171,7 +280,7 @@ export async function odataFetch(entityPath, options = {}) {
     }
   }
 
-  let response = await executeBrokerRequest(absoluteUrl, { ...options, headers });
+  let response = await executeBrokerRequest(absoluteUrl, { ...options, headers, method });
 
   // Auto-retry on 403 (expired CSRF token)
   if (response.status === 403 && isModifying) {
@@ -179,31 +288,21 @@ export async function odataFetch(entityPath, options = {}) {
     const freshToken = await fetchSAPCsrfToken();
     if (freshToken) {
       headers.set('X-CSRF-Token', freshToken);
-      response = await executeBrokerRequest(absoluteUrl, { ...options, headers });
+      response = await executeBrokerRequest(absoluteUrl, { ...options, headers, method });
     }
   }
 
   if (!response.ok) {
-    let errorMessage = `HTTP ${response.status}`;
-    try {
-      const bodyText = await response.text();
-      try {
-        const body = JSON.parse(bodyText);
-        if (body.error?.message?.value) {
-          errorMessage = body.error.message.value;
-        } else if (body.error?.message) {
-          errorMessage = typeof body.error.message === 'string' ? body.error.message : JSON.stringify(body.error.message);
-        }
-      } catch {
-        // Not JSON — use raw text (truncated)
-        if (bodyText) {
-          errorMessage = `${errorMessage}: ${bodyText.substring(0, 200)}`;
-        }
-      }
-    } catch {
-      // Could not read response body
-    }
-    throw new Error(`${errorMessage} [${absoluteUrl}]`);
+    const bodyText = await response.text();
+    throw new Error(
+      buildODataError({
+        method,
+        url: absoluteUrl,
+        status: response.status,
+        body: bodyText,
+        phase: 'SAP',
+      })
+    );
   }
 
   return await response.json();

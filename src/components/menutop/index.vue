@@ -24,14 +24,15 @@ defineProps({
   top: 0;
   left: 0;
   right: 0;
-  height: 56px;
-  background: var(--color-primary);
+  height: var(--header-height);
+  background: var(--fiori-shell-header);
   color: white;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 12px;
+  padding: 0 16px;
   z-index: 50;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 .menutop-left {
   display: flex;
@@ -42,18 +43,27 @@ defineProps({
   background: none;
   border: none;
   color: white;
-  font-size: 20px;
+  font-size: 18px;
   cursor: pointer;
   padding: 4px 8px;
+  opacity: 0.9;
+}
+.menutop-back:active {
+  opacity: 1;
 }
 .menutop-title {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
+  letter-spacing: 0.2px;
 }
 .menutop-right a {
   color: white;
   text-decoration: none;
-  font-size: 22px;
+  font-size: 20px;
   padding: 4px 8px;
+  opacity: 0.85;
+}
+.menutop-right a:active {
+  opacity: 1;
 }
 </style>

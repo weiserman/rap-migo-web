@@ -11,15 +11,17 @@
         <div>No purchase orders found for plant {{ store.plant }}</div>
       </div>
 
-      <div v-for="po in poList" :key="po.PurchaseOrder" class="list-item" @click="selectPO(po)">
-        <div class="list-item-content">
-          <div class="list-item-title">{{ po.PurchaseOrder }}</div>
-          <div class="list-item-desc">{{ po.SupplierName }}</div>
-          <div class="list-item-desc">
-            {{ po.PurchaseOrderDate }} &middot; {{ po.ItemCount }} item(s) &middot; {{ po.OpenItemCount }} open
+      <div class="list-group">
+        <div v-for="po in poList" :key="po.PurchaseOrder" class="list-item" @click="selectPO(po)">
+          <div class="list-item-content">
+            <div class="list-item-title">{{ po.PurchaseOrder }}</div>
+            <div class="list-item-desc">{{ po.SupplierName }}</div>
+            <div class="list-item-desc">
+              {{ po.PurchaseOrderDate }} · {{ po.ItemCount }} item(s) · {{ po.OpenItemCount }} open
+            </div>
           </div>
+          <span class="list-item-badge badge-open">{{ po.OpenItemCount }}</span>
         </div>
-        <span class="list-item-badge badge-open">{{ po.OpenItemCount }}</span>
       </div>
 
       <button class="btn btn-outline btn-block" style="margin-top: 16px" @click="loadPOs">

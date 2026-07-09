@@ -78,7 +78,7 @@ Object.assign(state, { showDialog });
 .dialog-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.4);
+  background: rgba(0, 0, 0, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -86,20 +86,22 @@ Object.assign(state, { showDialog });
 }
 .dialog-box {
   background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius);
   padding: 24px;
   min-width: 280px;
   max-width: 90vw;
 }
 .dialog-title {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   margin-bottom: 8px;
 }
 .dialog-body {
-  font-size: 15px;
+  font-size: 14px;
   margin-bottom: 16px;
   white-space: pre-wrap;
+  color: var(--color-text-secondary);
 }
 .dialog-actions {
   display: flex;

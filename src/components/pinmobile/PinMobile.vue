@@ -153,7 +153,7 @@ defineExpose({ clearAll });
   color: var(--color-text-secondary);
 }
 .functional-btn:active {
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: rgba(0, 0, 0, 0.05);
   color: var(--color-text);
 }
 </style>

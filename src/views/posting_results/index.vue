@@ -15,12 +15,14 @@
         </div>
       </div>
 
-      <div v-for="(result, idx) in results" :key="idx" class="result-item" :class="result.success ? 'result-success' : 'result-error'">
-        <div class="result-icon">{{ result.success ? '&#10003;' : '&#10007;' }}</div>
-        <div>
-          <div style="font-weight: 600; font-size: 14px">Item {{ idx + 1 }}</div>
-          <div style="font-size: 13px; color: var(--color-text-secondary)">
-            {{ result.success ? 'Posted successfully' : result.error || 'Unknown error' }}
+      <div class="list-group">
+        <div v-for="(result, idx) in results" :key="idx" class="result-item" :class="result.success ? 'result-success' : 'result-error'">
+          <div class="result-icon">{{ result.success ? '&#10003;' : '&#10007;' }}</div>
+          <div>
+            <div style="font-weight: 600; font-size: 14px">Item {{ idx + 1 }}</div>
+            <div style="font-size: 13px; color: var(--color-text-secondary)">
+              {{ result.success ? 'Posted successfully' : result.error || 'Unknown error' }}
+            </div>
           </div>
         </div>
       </div>

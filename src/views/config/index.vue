@@ -4,7 +4,7 @@
     <div class="page-content">
       <div class="form-group">
         <label class="form-label">SAP Host</label>
-        <input class="form-input" v-model="form.baseHost" placeholder="https://s4hana2025.professorsoft.com" />
+        <input class="form-input" v-model="form.baseHost" placeholder="https://host:port" />
       </div>
       <div class="form-group">
         <label class="form-label">Service Path</label>

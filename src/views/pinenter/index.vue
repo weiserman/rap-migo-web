@@ -1,18 +1,16 @@
 <template>
   <div class="page">
     <div class="page-content" style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh">
-      <h2 style="margin-bottom: 24px; text-align: center">Enter PIN</h2>
-      <input
-        class="form-input"
-        style="width: 120px; text-align: center; font-size: 24px; letter-spacing: 8px"
-        type="password"
-        maxlength="4"
-        inputmode="numeric"
-        pattern="[0-9]*"
-        v-model="pin"
-        @input="onInput"
+      <PinMobile
+        ref="pinEntryRef"
+        title="Enter PIN to Unlock"
+        :errorMessage="errorMessage"
+        @submit="handleVerifyPin"
       />
-      <div v-if="error" style="color: var(--color-error); margin-top: 8px; font-size: 13px">{{ error }}</div>
+
+      <div class="forgot-container">
+        <button class="forgot-btn" @click="handleForgotPin">Forgot PIN?</button>
+      </div>
     </div>
   </div>
 </template>
@@ -21,21 +19,52 @@
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { store, storeActions } from '../../util/store.js';
+import PinMobile from '../../components/pinmobile/PinMobile.vue';
 
 const router = useRouter();
-const pin = ref('');
-const error = ref('');
+const pinEntryRef = ref(null);
+const errorMessage = ref('');
 
-function onInput() {
-  error.value = '';
-  if (pin.value.length === 4) {
-    if (pin.value === store.appPin) {
-      storeActions.login();
-      router.push('/home');
-    } else {
-      error.value = 'Incorrect PIN';
-      pin.value = '';
+const handleVerifyPin = (enteredPin) => {
+  if (String(enteredPin) === String(store.appPin)) {
+    errorMessage.value = '';
+    storeActions.login();
+    router.push('/home');
+  } else {
+    errorMessage.value = 'Incorrect PIN code.';
+    if (pinEntryRef.value) {
+      pinEntryRef.value.clearAll();
     }
   }
-}
+};
+
+const handleForgotPin = () => {
+  const confirmReset = confirm(
+    'Are you sure you want to reset your PIN? This will clear all saved settings.'
+  );
+  if (confirmReset) {
+    storeActions.resetStore();
+    router.push('/setup');
+  }
+};
 </script>
+
+<style scoped>
+.forgot-container {
+  margin-top: 20px;
+  text-align: center;
+}
+.forgot-btn {
+  background: none;
+  border: none;
+  color: var(--color-text-secondary);
+  text-decoration: underline;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 5px 10px;
+}
+.forgot-btn:active {
+  color: var(--color-text);
+}
+</style>

@@ -126,6 +126,18 @@ export const storeActions = {
   clearPostingResults() {
     store.cache.postingResults = [];
   },
+  /**
+   * Reset all store data to defaults (used by Forgot PIN).
+   */
+  resetStore() {
+    store.appPin = null;
+    store.user.isLoggedIn = false;
+    store.user.name = 'User';
+    store.config = { ...defaultState.config };
+    store.plant = defaultState.plant;
+    store.cache = { ...defaultState.cache };
+    try { localStorage.removeItem(STORAGE_KEY); } catch {}
+  },
   exportConfigQR() {
     return JSON.stringify({
       baseHost: store.config.baseHost,

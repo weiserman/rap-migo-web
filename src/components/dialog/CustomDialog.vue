@@ -27,8 +27,9 @@
 import { ref, nextTick } from 'vue';
 import { useDialog } from './useDialog.js';
 
-const { state, resolve } = useDialog();
+const { state } = useDialog();
 const inputRef = ref(null);
+const pendingResolve = ref(null);
 
 const visible = ref(false);
 const title = ref('');
@@ -53,16 +54,25 @@ function showDialog(config) {
   if (config.inputMode) {
     nextTick(() => inputRef.value?.focus());
   }
+  return new Promise((res) => {
+    pendingResolve.value = res;
+  });
+}
+
+function doResolve(value) {
+  const res = pendingResolve.value;
+  pendingResolve.value = null;
+  if (res) res(value);
 }
 
 function onOk() {
   visible.value = false;
-  resolve(inputMode.value ? inputValue.value : true);
+  doResolve(inputMode.value ? inputValue.value : true);
 }
 
 function onCancel() {
   visible.value = false;
-  resolve(inputMode.value ? null : false);
+  doResolve(inputMode.value ? null : false);
 }
 
 function onOverlayClick() {
@@ -70,7 +80,7 @@ function onOverlayClick() {
   onCancel();
 }
 
-// Expose to window via useDialog
+// Expose to window via useDialog state
 Object.assign(state, { showDialog });
 </script>
 

@@ -36,7 +36,7 @@
       </div>
 
       <div v-if="testResult" style="margin-top: 12px" class="card">
-        <div :class="testResult.ok ? 'badge-complete' : 'badge-error'" style="padding: 8px; border-radius: 4px; text-align: left; word-break: break-word; font-size: 0.85rem; line-height: 1.5">
+        <div :class="testResult.ok ? 'badge-complete' : 'badge-error'" style="padding: 8px; border-radius: 4px; text-align: left; word-break: break-word; font-size: 0.85rem; line-height: 1.5; white-space: pre-line">
           {{ testResult.message }}
         </div>
       </div>

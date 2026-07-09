@@ -10,25 +10,31 @@ const BROKER_URL = '/api/net/request';
 
 /**
  * Build a detailed OData error with all available diagnostic information.
+ * Produces a multi-line diagnostic string that includes every available
+ * piece of information from the failed request.
  */
-function buildODataError({ method, url, status, statusText, body, phase, cause }) {
-  const parts = [];
+function buildODataError(info) {
+  const { method, url, status, body, phase, cause, brokerStatus } = info;
+  const lines = [];
 
-  // Phase indicator (where the failure occurred)
-  if (phase) parts.push(`[${phase}]`);
-
-  // HTTP status
-  if (status !== undefined && status !== null) {
-    parts.push(`${method || 'GET'} ${status}${statusText ? ' ' + statusText : ''}`);
+  // Line 1: Phase + method + status
+  let line1 = `[${phase || 'Unknown'}]`;
+  if (method) line1 += ` ${method}`;
+  if (status !== undefined && status !== null && status !== 0) {
+    line1 += ` ${status}`;
+  } else if (brokerStatus !== undefined && brokerStatus !== null) {
+    line1 += ` (broker HTTP ${brokerStatus})`;
+  } else {
+    line1 += ` (no response)`;
   }
+  lines.push(line1);
 
-  // URL (truncated for display)
+  // Line 2: URL
   if (url) {
-    const shortUrl = url.length > 120 ? url.substring(0, 117) + '...' : url;
-    parts.push(shortUrl);
+    lines.push(url);
   }
 
-  // Error message from response body
+  // Line 3+: Body diagnostics
   if (body) {
     try {
       const parsed = JSON.parse(body);
@@ -36,34 +42,41 @@ function buildODataError({ method, url, status, statusText, body, phase, cause }
       if (parsed.error) {
         const msg = parsed.error.message;
         if (msg?.value) {
-          parts.push(`— ${msg.value}`);
+          lines.push(msg.value);
         } else if (typeof msg === 'string') {
-          parts.push(`— ${msg}`);
+          lines.push(msg);
         } else if (msg) {
-          parts.push(`— ${JSON.stringify(msg)}`);
+          lines.push(JSON.stringify(msg));
         }
-        // Include error code if present
         if (parsed.error.code) {
-          parts.push(`(code: ${parsed.error.code})`);
+          lines.push(`Error code: ${parsed.error.code}`);
+        }
+        // Include details array if present (common in SAP RAP)
+        if (parsed.error.details && Array.isArray(parsed.error.details)) {
+          for (const detail of parsed.error.details.slice(0, 3)) {
+            lines.push(`  • ${detail.message || JSON.stringify(detail)}`);
+          }
         }
       } else {
-        // Non-OData error body
-        const truncated = body.length > 300 ? body.substring(0, 300) + '...' : body;
-        parts.push(`— ${truncated}`);
+        // Non-OData body
+        const truncated = body.length > 500 ? body.substring(0, 500) + '...' : body;
+        lines.push(truncated);
       }
     } catch {
       // Not JSON — show raw text
-      const truncated = body.length > 300 ? body.substring(0, 300) + '...' : body;
-      if (truncated) parts.push(`— ${truncated}`);
+      const truncated = body.length > 500 ? body.substring(0, 500) + '...' : body;
+      lines.push(truncated);
     }
+  } else if (!cause) {
+    lines.push('(empty response body)');
   }
 
   // Underlying cause
   if (cause) {
-    parts.push(`(cause: ${cause})`);
+    lines.push(`Cause: ${cause}`);
   }
 
-  return parts.join(' ');
+  return lines.join('\n');
 }
 
 /**
@@ -125,30 +138,44 @@ async function executeBrokerRequest(absoluteUrl, configOptions) {
         method,
         url: absoluteUrl,
         phase: 'Network',
-        cause: `Broker proxy unreachable (${err.message}). Is the AHM framework loaded?`,
+        cause: `Broker proxy unreachable at ${BROKER_URL} — ${err.message}. Is the AHM framework loaded?`,
       })
     );
   }
 
-  // Phase 2: Parse broker response
+  // Phase 2: Check broker HTTP status FIRST (matches reference scanner pattern)
+  if (!brokerResponse.ok) {
+    let brokerBody = '';
+    try { brokerBody = await brokerResponse.text(); } catch {}
+    throw new Error(
+      buildODataError({
+        method,
+        url: absoluteUrl,
+        status: brokerResponse.status,
+        body: brokerBody,
+        phase: 'Broker',
+        cause: `AHM broker proxy returned HTTP ${brokerResponse.status}. The native proxy layer is unavailable.`,
+      })
+    );
+  }
+
+  // Phase 3: Parse broker JSON response wrapper
   let resultWrapper;
   try {
     resultWrapper = await brokerResponse.json();
   } catch (err) {
-    const rawText = await brokerResponse.text().catch(() => '');
     throw new Error(
       buildODataError({
         method,
         url: absoluteUrl,
         status: brokerResponse.status,
         phase: 'Broker',
-        body: rawText,
-        cause: `Broker returned non-JSON response (${err.message})`,
+        cause: `Broker returned non-JSON response: ${err.message}`,
       })
     );
   }
 
-  // Check if broker itself returned an error (distinct from SAP error)
+  // Check if broker wrapper itself reported an error (no status field = broker-level failure)
   if (resultWrapper.error && !resultWrapper.status) {
     throw new Error(
       buildODataError({
@@ -158,6 +185,7 @@ async function executeBrokerRequest(absoluteUrl, configOptions) {
         body: typeof resultWrapper.error === 'string'
           ? resultWrapper.error
           : JSON.stringify(resultWrapper.error),
+        cause: 'Broker wrapper reported an error while processing the request',
       })
     );
   }
@@ -175,7 +203,14 @@ async function executeBrokerRequest(absoluteUrl, configOptions) {
     }
   }
 
-  const status = resultWrapper.status || 0;
+  // Extract status — handle numeric, string-number, and falsy values
+  let status = 0;
+  if (typeof resultWrapper.status === 'number') {
+    status = resultWrapper.status;
+  } else if (typeof resultWrapper.status === 'string') {
+    status = parseInt(resultWrapper.status, 10) || 0;
+  }
+
   const bodyText = resultWrapper.body || '';
 
   return {
@@ -183,6 +218,7 @@ async function executeBrokerRequest(absoluteUrl, configOptions) {
     ok: status >= 200 && status < 300,
     method,
     url: absoluteUrl,
+    bodyText,
     headers: {
       get: (name) =>
         resultWrapper.headers ? resultWrapper.headers[name.toLowerCase()] : null,
@@ -293,7 +329,8 @@ export async function odataFetch(entityPath, options = {}) {
   }
 
   if (!response.ok) {
-    const bodyText = await response.text();
+    // Use the pre-captured bodyText from the response object
+    const bodyText = response.bodyText || await response.text();
     throw new Error(
       buildODataError({
         method,

@@ -4,17 +4,19 @@ Vue 3 single-page application for mobile goods receipt scanning against the SAP 
 
 Deployed as the web layer inside the [Android Hybrid Mobile (AHM)](https://github.com/otvnvs/android-hybrid-mobile) framework via OTA updates or ADB push.
 
-## Deployment
+## OTA Deployment
 
-This repo is the OTA update source for the AHM APK. Point the maintenance panel's update URL at:
+This is a **public** repository. Point the AHM maintenance panel's update URL at:
 
 ```
 https://github.com/weiserman/rap-migo-web/archive/refs/heads/main.zip
 ```
 
-The AHM UpdateManager auto-strips the `rap-migo-web-main/` wrapper folder from the GitHub ZIP.
+- No authentication required (public repo)
+- The AHM UpdateManager auto-strips the `rap-migo-web-main/` wrapper folder
+- Enable auto-update with any interval for hands-free deployments
 
-## Structure
+## Project Structure
 
 ```
 index.html          ← SFC production entry (vue3-sfc-loader, zero-build)
@@ -29,9 +31,27 @@ src/
   views/             ← 10 screens (PIN, Home, Config, PO list, Items, GR posting)
 ```
 
-## Development
+## Vendored Dependencies (offline-capable)
 
-The source of truth lives in `rap-mobile/web/`. To sync changes here:
+| Package | File | Size |
+|---------|------|------|
+| Vue 3 | `src/lib/vue/vue.esm-browser.prod.js` | 168 KB |
+| Vue Router 4 | `src/lib/vue-router/vue-router.esm-browser.js` | 100 KB |
+| vue3-sfc-loader | `src/lib/vue3-sfc-loader/dist/vue3-sfc-loader.esm.js` | 1.8 MB |
+
+All runtime dependencies are shipped inline — the app runs fully offline with zero CDN dependency.
+
+## ADB Deployment (development)
+
+```bash
+adb push index.html /sdcard/Documents/MigoGR/www/
+adb push error.html /sdcard/Documents/MigoGR/www/
+adb push src/ /sdcard/Documents/MigoGR/www/src/
+```
+
+## Syncing from Source
+
+The source of truth lives in `rap-mobile/web/`. To sync changes:
 
 ```bash
 cd rap-mobile/web

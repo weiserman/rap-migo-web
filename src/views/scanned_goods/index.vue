@@ -33,12 +33,32 @@
           </div>
         </div>
 
-        <button class="btn btn-success btn-block" @click="postAll" :disabled="posting">
-          {{ posting ? 'Posting...' : 'Post All Goods Receipts' }}
+        <!-- Normal state: Post button -->
+        <button v-if="!confirmVisible && !posting" class="btn btn-success btn-block" @click="showConfirm">
+          Post All Goods Receipts
         </button>
 
-        <div v-if="posting" class="progress-bar">
-          <div class="progress-bar-fill" :style="{ width: progressPct + '%' }"></div>
+        <!-- Confirmation state: two buttons -->
+        <div v-if="confirmVisible && !posting" class="confirm-group">
+          <div class="message-strip strip-warning" style="margin-bottom: 12px">
+            <span class="message-strip-icon">&#9888;</span>
+            <span>Post {{ stagingList.length }} item(s) as goods receipts? This cannot be undone.</span>
+          </div>
+          <div style="display: flex; gap: 12px">
+            <button class="btn btn-outline" style="flex: 1" @click="confirmVisible = false">Cancel</button>
+            <button class="btn btn-success" style="flex: 1" @click="doPost">Confirm Post</button>
+          </div>
+        </div>
+
+        <!-- Posting state: progress -->
+        <div v-if="posting" style="text-align: center">
+          <button class="btn btn-success btn-block" disabled>Posting...</button>
+          <div class="progress-bar">
+            <div class="progress-bar-fill" :style="{ width: progressPct + '%' }"></div>
+          </div>
+          <div style="font-size: 12px; color: var(--color-text-secondary); margin-top: 4px">
+            {{ progressPct }}%
+          </div>
         </div>
       </div>
     </div>
@@ -55,6 +75,7 @@ import { EntityService } from '../../util/entities.js';
 const router = useRouter();
 const posting = ref(false);
 const progressPct = ref(0);
+const confirmVisible = ref(false);
 
 const stagingList = computed(() => store.cache.stagingList);
 const selectedPO = computed(() => store.cache.selectedPO);
@@ -64,22 +85,13 @@ function removeItem(idx) {
   storeActions.removeFromStaging(item.PurchaseOrder, item.PurchaseOrderItem);
 }
 
-async function postAll() {
+function showConfirm() {
   if (!selectedPO.value || stagingList.value.length === 0) return;
+  confirmVisible.value = true;
+}
 
-  let confirmed = false;
-  try {
-    confirmed = await confirm(
-      `Post ${stagingList.value.length} item(s) as goods receipts?\n\nThis action cannot be undone.`
-    );
-  } catch {
-    // Dialog system may not be initialized; fall back to native
-    confirmed = window.confirm
-      ? window.confirm(`Post ${stagingList.value.length} item(s)?`)
-      : false;
-  }
-  if (!confirmed) return;
-
+async function doPost() {
+  confirmVisible.value = false;
   posting.value = true;
   progressPct.value = 0;
 

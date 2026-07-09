@@ -368,6 +368,142 @@ export async function odataFetch(entityPath, options = {}) {
 }
 
 /**
+ * Send an OData $batch request with multiple operations.
+ * Falls back gracefully if the broker or SAP doesn't support multipart.
+ *
+ * @param {string} entityPath - Base entity path (e.g., "GRPostings")
+ * @param {Array<{method: string, body: object, contentId?: string}>} requests
+ * @returns {Promise<Array<{status: number, body: object, ok: boolean}>>}
+ */
+export async function odataBatch(entityPath, requests) {
+  if (!requests || requests.length === 0) return [];
+
+  const boundary = 'batch_' + crypto.randomUUID().replace(/-/g, '');
+  const batchUrl = buildServiceUrl('$batch');
+  const serviceBase = buildServiceUrl(entityPath).split('?')[0]; // strip $format=json
+
+  // Build multipart body
+  const parts = [];
+  requests.forEach((req, idx) => {
+    const contentId = req.contentId || String(idx + 1);
+    const partBody = JSON.stringify(req.body);
+    parts.push(
+      `--${boundary}\r\n` +
+      `Content-Type: application/http\r\n` +
+      `Content-Transfer-Encoding: binary\r\n` +
+      `Content-ID: ${contentId}\r\n\r\n` +
+      `POST ${serviceBase} HTTP/1.1\r\n` +
+      `Content-Type: application/json\r\n` +
+      `Accept: application/json\r\n\r\n` +
+      `${partBody}\r\n`
+    );
+  });
+  const multipartBody = parts.join('') + `--${boundary}--\r\n`;
+
+  // Ensure CSRF token
+  if (!cachedCsrfToken) {
+    await fetchSAPCsrfToken();
+  }
+
+  const headers = new Headers();
+  headers.set('Accept', 'multipart/mixed');
+  headers.set('Content-Type', `multipart/mixed; boundary=${boundary}`);
+  const { username, password } = store.config;
+  if (username) {
+    headers.set('Authorization', `Basic ${btoa(`${username}:${password || ''}`)}`);
+  }
+  if (cachedCsrfToken) {
+    headers.set('X-CSRF-Token', cachedCsrfToken);
+  }
+
+  const response = await executeBrokerRequest(batchUrl, {
+    method: 'POST',
+    headers,
+    body: multipartBody,
+  });
+
+  if (response.status === 403) {
+    cachedCsrfToken = null;
+    const freshToken = await fetchSAPCsrfToken();
+    if (freshToken) headers.set('X-CSRF-Token', freshToken);
+    const retry = await executeBrokerRequest(batchUrl, {
+      method: 'POST',
+      headers,
+      body: multipartBody,
+    });
+    return parseBatchResponse(retry);
+  }
+
+  return parseBatchResponse(response);
+}
+
+/**
+ * Parse a multipart/mixed $batch response into individual results.
+ */
+function parseBatchResponse(response) {
+  if (!response.ok) {
+    const bodyText = response.bodyText || '';
+    throw new Error(
+      buildODataError({
+        method: 'POST',
+        url: response.url,
+        status: response.status,
+        body: bodyText,
+        phase: 'SAP',
+      })
+    );
+  }
+
+  const bodyText = response.bodyText || '';
+  const contentType = response.headers.get('content-type') || '';
+
+  // Extract boundary from Content-Type header
+  const boundaryMatch = contentType.match(/boundary=([^\s;]+)/);
+  if (!boundaryMatch) {
+    throw new Error('Batch response missing multipart boundary');
+  }
+
+  const boundary = boundaryMatch[1];
+  const results = [];
+
+  // Split by boundary
+  const parts = bodyText.split(`--${boundary}`);
+  for (const part of parts) {
+    if (!part || part.trim() === '--' || part.trim() === '') continue;
+
+    // Extract HTTP status line
+    const statusMatch = part.match(/HTTP\/1\.1\s+(\d+)/);
+    if (!statusMatch) continue;
+
+    const status = parseInt(statusMatch[1], 10);
+
+    // Extract JSON body (after double CRLF)
+    const bodyStart = part.indexOf('\r\n\r\n', part.indexOf('HTTP/1.1'));
+    let parsedBody = {};
+    if (bodyStart >= 0) {
+      const jsonStr = part.substring(bodyStart + 4).trim();
+      // Remove trailing boundary markers
+      const cleanJson = jsonStr.replace(/\r\n$/, '').trim();
+      if (cleanJson) {
+        try {
+          parsedBody = JSON.parse(cleanJson);
+        } catch {
+          parsedBody = { raw: cleanJson };
+        }
+      }
+    }
+
+    results.push({
+      status,
+      ok: status >= 200 && status < 300,
+      body: parsedBody,
+    });
+  }
+
+  return results;
+}
+
+/**
  * Reset cached CSRF token (e.g., on config change).
  */
 export function resetCsrfToken() {

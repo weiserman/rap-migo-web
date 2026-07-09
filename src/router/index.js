@@ -5,6 +5,7 @@ import Home from '../views/home/index.vue';
 import Config from '../views/config/index.vue';
 import PoList from '../views/po_list/index.vue';
 import PoItems from '../views/po_items/index.vue';
+import PoLookup from '../views/po_lookup/index.vue';
 import ReceiptItem from '../views/receipt_item/index.vue';
 import ScannedGoods from '../views/scanned_goods/index.vue';
 import PostingResults from '../views/posting_results/index.vue';
@@ -18,6 +19,7 @@ const routes = [
   { name: 'home', path: '/home', component: Home },
   { name: 'config', path: '/config', component: Config },
   { name: 'po_list', path: '/po_list', component: PoList },
+  { name: 'po_lookup', path: '/po_lookup', component: PoLookup },
   { name: 'po_items', path: '/po_items/:poNumber', component: PoItems, props: true },
   { name: 'receipt_item', path: '/receipt_item/:itemId', component: ReceiptItem, props: true },
   { name: 'scanned_goods', path: '/scanned_goods', component: ScannedGoods },

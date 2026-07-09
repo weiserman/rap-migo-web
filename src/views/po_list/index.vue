@@ -6,21 +6,33 @@
         <div class="loading-spinner"><div class="spinner"></div>Loading POs...</div>
       </div>
 
-      <div v-if="!loading && poList.length === 0" class="empty-state">
-        <div class="empty-state-icon">&#128230;</div>
-        <div>No purchase orders found for plant {{ store.plant }}</div>
+      <div class="search-bar">
+        <span class="search-bar-icon">&#128269;</span>
+        <input
+          class="form-input"
+          v-model="searchText"
+          placeholder="Filter by PO number or supplier"
+          autocomplete="off"
+        />
       </div>
 
-      <div class="list-group">
-        <div v-for="po in poList" :key="po.PurchaseOrder" class="list-item" @click="selectPO(po)">
+      <div v-if="!loading && filteredList.length === 0" class="empty-state">
+        <div class="empty-state-icon">&#128230;</div>
+        <div v-if="searchText">No matching purchase orders</div>
+        <div v-else>No purchase orders found for plant {{ store.plant }}</div>
+      </div>
+
+      <div v-if="filteredList.length > 0" class="list-group">
+        <div v-for="po in filteredList" :key="po.PurchaseOrder" class="list-item" @click="selectPO(po)">
           <div class="list-item-content">
             <div class="list-item-title">{{ po.PurchaseOrder }}</div>
             <div class="list-item-desc">{{ po.SupplierName }}</div>
             <div class="list-item-desc">
-              {{ po.PurchaseOrderDate }} · {{ po.ItemCount }} item(s) · {{ po.OpenItemCount }} open
+              {{ po.PurchaseOrderDate }} &middot; {{ po.ItemCount }} item(s) &middot; {{ po.OpenItemCount }} open
             </div>
           </div>
-          <span class="list-item-badge badge-open">{{ po.OpenItemCount }}</span>
+          <span class="object-status status-open">{{ po.OpenItemCount }}</span>
+          <span class="nav-arrow">&#8250;</span>
         </div>
       </div>
 
@@ -32,7 +44,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import MenuTop from '../../components/menutop/index.vue';
 import { store, storeActions } from '../../util/store.js';
@@ -40,7 +52,18 @@ import { EntityService } from '../../util/entities.js';
 
 const router = useRouter();
 const loading = ref(false);
+const searchText = ref('');
 const poList = ref([]);
+
+const filteredList = computed(() => {
+  const q = searchText.value.trim().toLowerCase();
+  if (!q) return poList.value;
+  return poList.value.filter(
+    (po) =>
+      po.PurchaseOrder.toLowerCase().includes(q) ||
+      po.SupplierName.toLowerCase().includes(q)
+  );
+});
 
 onMounted(() => loadPOs());
 
@@ -61,3 +84,12 @@ function selectPO(po) {
   router.push({ name: 'po_items', params: { poNumber: po.PurchaseOrder } });
 }
 </script>
+
+<style scoped>
+.nav-arrow {
+  color: var(--color-text-secondary);
+  font-size: 20px;
+  font-weight: 300;
+  margin-left: 8px;
+}
+</style>

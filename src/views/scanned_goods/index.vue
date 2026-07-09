@@ -7,13 +7,16 @@
         <div>No items staged yet. Go back and add items.</div>
       </div>
 
-      <div v-for="(item, idx) in stagingList" :key="idx" class="card">
-        <div style="display: flex; justify-content: space-between; align-items: center">
-          <div>
-            <div class="card-title">{{ item.Material }}</div>
-            <div class="card-subtitle">
+      <div class="list-group">
+        <div v-for="(item, idx) in stagingList" :key="idx" class="list-item staged-item">
+          <div class="list-item-content">
+            <div class="list-item-title">{{ item.Material }}</div>
+            <div class="list-item-desc">
               Item {{ item.PurchaseOrderItem }} &middot;
               Qty: {{ item.recptQty }} {{ item.OrderUnit }}
+            </div>
+            <div v-if="item.postingDate" class="list-item-desc" style="margin-top: 2px">
+              Posting date: {{ item.postingDate }}
             </div>
           </div>
           <button class="btn btn-error btn-sm" @click="removeItem(idx)">Remove</button>
@@ -22,8 +25,12 @@
 
       <div v-if="stagingList.length > 0" style="margin-top: 16px">
         <div class="card" style="text-align: center">
-          <div style="font-size: 24px; font-weight: 700">{{ stagingList.length }}</div>
-          <div style="font-size: 13px; color: var(--color-text-secondary)">items to post</div>
+          <div class="object-status status-open" style="font-size: 14px; margin-bottom: 4px">
+            {{ stagingList.length }} item(s) ready to post
+          </div>
+          <div style="font-size: 12px; color: var(--color-text-secondary)">
+            PO {{ selectedPO?.PurchaseOrder || '' }} &middot; Plant {{ selectedPO?.Plant || '' }}
+          </div>
         </div>
 
         <button class="btn btn-success btn-block" @click="postAll" :disabled="posting">
@@ -95,3 +102,9 @@ async function postAll() {
   }
 }
 </script>
+
+<style scoped>
+.staged-item {
+  cursor: default;
+}
+</style>

@@ -30,6 +30,7 @@ const defaultState = {
     stagingList: [],
     postingResults: [],
     postingInProgress: false,
+    poHistory: [],
   },
 };
 
@@ -125,6 +126,27 @@ export const storeActions = {
   },
   clearPostingResults() {
     store.cache.postingResults = [];
+  },
+  addToPoHistory(po) {
+    const entry = {
+      PurchaseOrder: po.PurchaseOrder,
+      SupplierName: po.SupplierName || '',
+      Plant: po.Plant || '',
+      timestamp: Date.now(),
+    };
+    // Remove duplicate if exists
+    const idx = store.cache.poHistory.findIndex(
+      (h) => h.PurchaseOrder === entry.PurchaseOrder
+    );
+    if (idx >= 0) store.cache.poHistory.splice(idx, 1);
+    // Add to front, keep max 5
+    store.cache.poHistory.unshift(entry);
+    if (store.cache.poHistory.length > 5) {
+      store.cache.poHistory.splice(5);
+    }
+  },
+  clearPoHistory() {
+    store.cache.poHistory.splice(0);
   },
   /**
    * Reset all store data to defaults (used by Forgot PIN).

@@ -2,18 +2,46 @@
   <div class="page">
     <MenuTop title="MIGO GR Scanner" :showBack="false" :showHome="false" />
     <div class="page-content">
-      <div class="card app-header-card">
-        <div class="card-title">Goods Receipt Scanner</div>
-        <div class="card-subtitle">Plant: {{ store.plant }} · {{ store.config.baseHost }}</div>
+      <div class="object-header">
+        <div class="object-header-title">Goods Receipt Scanner</div>
+        <div class="object-header-subtitle">Plant {{ store.plant }}</div>
+        <div class="object-header-attrs">
+          <span class="info-label">
+            <span class="info-label-dot dot-info"></span>
+            {{ store.config.baseHost }}
+          </span>
+        </div>
+      </div>
+
+      <div v-if="stagingCount > 0" class="message-strip strip-info">
+        <span class="message-strip-icon">&#9432;</span>
+        <span>{{ stagingCount }} item(s) staged for posting</span>
       </div>
 
       <div class="section-label">ACTIONS</div>
       <div class="list-group">
+        <router-link to="/po_lookup" class="list-item">
+          <div class="list-item-content">
+            <div class="list-item-title">Scan / Enter PO</div>
+            <div class="list-item-desc">Look up a purchase order by number</div>
+          </div>
+          <span class="nav-arrow">&#8250;</span>
+        </router-link>
+
         <router-link to="/po_list" class="list-item">
           <div class="list-item-content">
-            <div class="list-item-title">Receive Goods</div>
-            <div class="list-item-desc">Browse POs and post goods receipts</div>
+            <div class="list-item-title">Browse PO List</div>
+            <div class="list-item-desc">View open purchase orders for this plant</div>
           </div>
+          <span class="nav-arrow">&#8250;</span>
+        </router-link>
+
+        <router-link v-if="stagingCount > 0" to="/scanned_goods" class="list-item">
+          <div class="list-item-content">
+            <div class="list-item-title">Review Staged Items</div>
+            <div class="list-item-desc">{{ stagingCount }} item(s) ready to post</div>
+          </div>
+          <span class="object-status status-open">{{ stagingCount }}</span>
           <span class="nav-arrow">&#8250;</span>
         </router-link>
 
@@ -38,11 +66,13 @@
 </template>
 
 <script setup>
+import { computed } from 'vue';
 import MenuTop from '../../components/menutop/index.vue';
 import { store, storeActions } from '../../util/store.js';
 import { useRouter } from 'vue-router';
 
 const router = useRouter();
+const stagingCount = computed(() => store.cache.stagingList.length);
 
 function lockApp() {
   storeActions.logout();
@@ -51,9 +81,6 @@ function lockApp() {
 </script>
 
 <style scoped>
-.app-header-card {
-  margin-bottom: 24px;
-}
 .section-label {
   font-size: 11px;
   font-weight: 600;

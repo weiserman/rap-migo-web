@@ -2,7 +2,7 @@
  * Entity normalizers and service layer for ZUI_MIGO_GR_V4.
  * Maps SAP CDS entity fields to frontend-friendly objects.
  */
-import { odataFetch } from './odata.js';
+import { odataFetch, odataBatch } from './odata.js';
 import { store } from './store.js';
 
 // ─── Normalizers ──────────────────────────────────────────
@@ -111,28 +111,42 @@ export const EntityService = {
   },
 
   /**
+   * Fetch a single PO header by number (with items expanded).
+   */
+  async getPoHeader(poNumber) {
+    const select =
+      'PurchaseOrder,OrderType,Supplier,SupplierName,PurchaseOrderDate,Plant,ItemCount,OpenItemCount,OverallStatus';
+    const itemSelect =
+      'PurchaseOrderItem,Material,MaterialDescription,Plant,StorageLocation,OrderQuantity,OpenQuantity,ReceivedQuantity,OrderUnit,BaseUnit,PrimaryEAN,PrimaryEANUnit,CartonEAN,CartonEANUnit,IsCompletelyDelivered,GoodsReceiptIsExpected';
+
+    const endpoint = `PurchaseOrders('${poNumber}')?$select=${select}&$expand=_Items($select=${itemSelect})`;
+    const response = await odataFetch(endpoint, { method: 'GET' });
+
+    const po = normalizePO(response);
+    if (po) {
+      storeActions_cacheItems(poNumber, po._Items);
+      storeActions_addToPoHistory(po);
+    }
+    return po;
+  },
+
+  /**
    * Post a single GR item via direct CREATE.
    */
   async postGoodsReceipt(stagingItem, poHeader) {
-    const body = {
-      PostingID: crypto.randomUUID().replace(/-/g, ''),
-      PurchaseOrder: poHeader.PurchaseOrder,
-      PurchaseOrderItem: stagingItem.PurchaseOrderItem,
-      Material: stagingItem.Material,
-      Plant: poHeader.Plant || stagingItem.Plant,
-      StorageLocation: stagingItem.StorageLocation || '',
-      Quantity: stagingItem.recptQty,
-      EntryUnit: stagingItem.OrderUnit,
-      MovementType: '101',
-      PostingDate: stagingItem.postingDate || '',
-    };
+    const body = buildGRBody(stagingItem, poHeader);
 
     try {
-      await odataFetch('GRPostings', {
+      const response = await odataFetch('GRPostings', {
         method: 'POST',
         body: JSON.stringify(body),
       });
-      return { success: true, postingId: body.PostingID };
+      return {
+        success: true,
+        postingId: body.PostingID,
+        materialDocument: response.MaterialDocument || '',
+        materialDocumentYear: response.MaterialDocumentYear || '',
+      };
     } catch (err) {
       return {
         success: false,
@@ -143,23 +157,21 @@ export const EntityService = {
   },
 
   /**
-   * Post multiple GR items sequentially.
+   * Post multiple GR items — tries OData $batch first, falls back to sequential.
    */
   async postGoodsReceipts(stagingItems, poHeader, onProgress) {
-    const results = [];
-    let successCount = 0;
-    let failCount = 0;
-
     store.cache.postingInProgress = true;
 
-    for (let i = 0; i < stagingItems.length; i++) {
-      const result = await this.postGoodsReceipt(stagingItems[i], poHeader);
-      results.push(result);
-      if (result.success) successCount++;
-      else failCount++;
-
-      if (onProgress) onProgress(i + 1, stagingItems.length, result);
+    let results;
+    try {
+      results = await postBatch(stagingItems, poHeader, onProgress);
+    } catch {
+      // Batch failed — fall back to sequential
+      results = await postSequential.call(this, stagingItems, poHeader, onProgress);
     }
+
+    const successCount = results.filter((r) => r.success).length;
+    const failCount = results.length - successCount;
 
     store.cache.postingInProgress = false;
     store.cache.postingResults = results;
@@ -175,9 +187,91 @@ export const EntityService = {
   },
 };
 
-// Helper to avoid circular import
+// ─── Helpers ────────────────────────────────────────────────
+
+function buildGRBody(stagingItem, poHeader) {
+  return {
+    PostingID: crypto.randomUUID().replace(/-/g, ''),
+    PurchaseOrder: poHeader.PurchaseOrder,
+    PurchaseOrderItem: stagingItem.PurchaseOrderItem,
+    Material: stagingItem.Material,
+    Plant: poHeader.Plant || stagingItem.Plant,
+    StorageLocation: stagingItem.StorageLocation || '',
+    Quantity: stagingItem.recptQty,
+    EntryUnit: stagingItem.OrderUnit,
+    MovementType: '101',
+    PostingDate: stagingItem.postingDate || '',
+  };
+}
+
+async function postBatch(stagingItems, poHeader, onProgress) {
+  const bodies = stagingItems.map((item) => ({
+    method: 'POST',
+    body: buildGRBody(item, poHeader),
+    contentId: item.PurchaseOrderItem,
+  }));
+
+  const batchResults = await odataBatch('GRPostings', bodies);
+  const results = [];
+
+  for (let i = 0; i < stagingItems.length; i++) {
+    const br = batchResults[i];
+    const body = bodies[i].body;
+    let result;
+    if (br && br.ok) {
+      result = {
+        success: true,
+        postingId: body.PostingID,
+        materialDocument: br.body?.MaterialDocument || '',
+        materialDocumentYear: br.body?.MaterialDocumentYear || '',
+      };
+    } else {
+      const errMsg =
+        br?.body?.error?.message?.value ||
+        br?.body?.error?.message ||
+        `Batch part ${i + 1} failed (status ${br?.status || 'unknown'})`;
+      result = {
+        success: false,
+        error: typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg),
+        postingId: body.PostingID,
+      };
+    }
+    results.push(result);
+    if (onProgress) onProgress(i + 1, stagingItems.length, result);
+  }
+
+  return results;
+}
+
+async function postSequential(stagingItems, poHeader, onProgress) {
+  const results = [];
+  for (let i = 0; i < stagingItems.length; i++) {
+    const result = await EntityService.postGoodsReceipt(stagingItems[i], poHeader);
+    results.push(result);
+    if (onProgress) onProgress(i + 1, stagingItems.length, result);
+  }
+  return results;
+}
+
 function storeActions_cacheItems(poNumber, items) {
   store.cache.deliveryCache[poNumber] = { items, loaded: true };
+}
+
+function storeActions_addToPoHistory(po) {
+  const entry = {
+    PurchaseOrder: po.PurchaseOrder,
+    SupplierName: po.SupplierName || '',
+    Plant: po.Plant || '',
+    timestamp: Date.now(),
+  };
+  const idx = store.cache.poHistory.findIndex(
+    (h) => h.PurchaseOrder === entry.PurchaseOrder
+  );
+  if (idx >= 0) store.cache.poHistory.splice(idx, 1);
+  store.cache.poHistory.unshift(entry);
+  if (store.cache.poHistory.length > 5) {
+    store.cache.poHistory.splice(5);
+  }
 }
 
 // ─── Barcode Matching ─────────────────────────────────────

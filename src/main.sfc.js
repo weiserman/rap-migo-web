@@ -14,9 +14,18 @@ fetch('./src/style.css')
   .catch((err) => console.error('CSS load failed:', err));
 
 bootstrapSfcApp()
-  .then(({ createApp, Main, router }) => {
+  .then(async ({ createApp, Main, router }) => {
     const app = createApp(Main);
     if (router) app.use(router);
     app.mount('#app');
+
+    // Start sync engine — initializes outbox DB, recovers in-flight items,
+    // and begins replaying pending transactions
+    try {
+      const { startSyncEngine } = await import('./util/sync/engine.js');
+      await startSyncEngine();
+    } catch (err) {
+      console.error('[Sync] Engine startup failed:', err);
+    }
   })
   .catch((err) => console.error('App initialization failed:', err));

@@ -33,32 +33,26 @@
           </div>
         </div>
 
-        <!-- Normal state: Post button -->
-        <button v-if="!confirmVisible && !posting" class="btn btn-success btn-block" @click="showConfirm">
-          Post All Goods Receipts
+        <!-- Normal state: Stage button -->
+        <button v-if="!confirmVisible && !staging" class="btn btn-success btn-block" @click="showConfirm">
+          Stage for Posting
         </button>
 
         <!-- Confirmation state: two buttons -->
-        <div v-if="confirmVisible && !posting" class="confirm-group">
+        <div v-if="confirmVisible && !staging" class="confirm-group">
           <div class="message-strip strip-warning" style="margin-bottom: 12px">
             <span class="message-strip-icon">&#9888;</span>
-            <span>Post {{ stagingList.length }} item(s) as goods receipts? This cannot be undone.</span>
+            <span>Stage {{ stagingList.length }} item(s) for posting? Items will be queued and posted in the background.</span>
           </div>
           <div style="display: flex; gap: 12px">
             <button class="btn btn-outline" style="flex: 1" @click="confirmVisible = false">Cancel</button>
-            <button class="btn btn-success" style="flex: 1" @click="doPost">Confirm Post</button>
+            <button class="btn btn-success" style="flex: 1" @click="doPost">Confirm Stage</button>
           </div>
         </div>
 
-        <!-- Posting state: progress -->
-        <div v-if="posting" style="text-align: center">
-          <button class="btn btn-success btn-block" disabled>Posting...</button>
-          <div class="progress-bar">
-            <div class="progress-bar-fill" :style="{ width: progressPct + '%' }"></div>
-          </div>
-          <div style="font-size: 12px; color: var(--color-text-secondary); margin-top: 4px">
-            {{ progressPct }}%
-          </div>
+        <!-- Staging state: progress -->
+        <div v-if="staging" style="text-align: center">
+          <button class="btn btn-success btn-block" disabled>Staging...</button>
         </div>
       </div>
     </div>
@@ -70,11 +64,12 @@ import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import MenuTop from '../../components/menutop/index.vue';
 import { store, storeActions } from '../../util/store.js';
-import { EntityService } from '../../util/entities.js';
+import { buildGRBody } from '../../util/entities.js';
+import { enqueue, getPendingCount } from '../../util/sync/outbox.js';
+import { replayOutbox, isSyncing } from '../../util/sync/engine.js';
 
 const router = useRouter();
-const posting = ref(false);
-const progressPct = ref(0);
+const staging = ref(false);
 const confirmVisible = ref(false);
 
 const stagingList = computed(() => store.cache.stagingList);
@@ -90,35 +85,69 @@ function showConfirm() {
   confirmVisible.value = true;
 }
 
+/**
+ * Phase A (capture): Enqueue each staging item to the durable outbox.
+ * The PostingID in the payload is the outbox item's id — the idempotency key.
+ * After enqueue, trigger the sync engine to start replaying.
+ */
 async function doPost() {
   confirmVisible.value = false;
-  posting.value = true;
-  progressPct.value = 0;
+  staging.value = true;
 
   try {
-    const { results, successCount, failCount } = await EntityService.postGoodsReceipts(
-      stagingList.value,
-      selectedPO.value,
-      (current, total) => {
-        progressPct.value = Math.round((current / total) * 100);
-      }
-    );
+    const poHeader = selectedPO.value;
+    const items = stagingList.value;
+    const operatorId = store.user.name || 'unknown';
 
-    storeActions.setPostingResults(results);
+    // Enqueue each item to the durable outbox
+    for (const item of items) {
+      const payload = buildGRBody(item, poHeader);
+      await enqueue({
+        id: payload.PostingID,     // UUID = idempotency key
+        operator_id: operatorId,
+        po_number: poHeader.PurchaseOrder,
+        payload: payload,          // Full GR body (includes PostingID)
+      });
+    }
+
+    // Clear staging list — items are now safely persisted in outbox
     storeActions.clearStaging();
+
+    // Update pending count in store
+    const pendingCount = await getPendingCount();
+    store.sync.pendingCount = pendingCount;
+
+    // Store the posting results for the results page
+    storeActions.setPostingResults(
+      items.map((item) => ({
+        success: true,
+        postingId: item.PurchaseOrderItem,
+        message: 'Queued for posting',
+        PurchaseOrder: poHeader.PurchaseOrder,
+        PurchaseOrderItem: item.PurchaseOrderItem,
+        Material: item.Material,
+      }))
+    );
 
     // Refresh PO items
     try {
-      await EntityService.refreshPoItems(selectedPO.value.PurchaseOrder);
+      const { EntityService } = await import('../../util/entities.js');
+      await EntityService.refreshPoItems(poHeader.PurchaseOrder);
     } catch {
       // Refresh failure is non-fatal
     }
 
+    // Navigate to results
     router.push('/posting_results');
+
+    // Phase B: Trigger sync engine replay (runs in background)
+    if (!isSyncing()) {
+      replayOutbox();
+    }
   } catch (err) {
-    alert(`Posting failed: ${err.message}`);
+    alert(`Failed to stage items: ${err.message}`);
   } finally {
-    posting.value = false;
+    staging.value = false;
   }
 }
 </script>

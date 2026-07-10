@@ -180,6 +180,43 @@ export const EntityService = {
   },
 
   /**
+   * Post a single GR from the outbox via $batch (one changeset, one operation).
+   * The PostingID is already set in the payload at capture time — this is
+   * the idempotency contract with the RAP BO.
+   */
+  async postFromOutbox(outboxItem) {
+    const body = typeof outboxItem.payload === 'string'
+      ? JSON.parse(outboxItem.payload)
+      : outboxItem.payload;
+
+    const requests = [{
+      method: 'POST',
+      body: body,
+      contentId: '1',
+    }];
+
+    const batchResults = await odataBatch('GRPostings', requests);
+    const result = batchResults[0];
+
+    if (result && result.ok) {
+      return {
+        success: true,
+        materialDocument: result.body?.MaterialDocument || '',
+        materialDocumentYear: result.body?.MaterialDocumentYear || '',
+      };
+    } else {
+      const errMsg =
+        result?.body?.error?.message?.value ||
+        result?.body?.error?.message ||
+        `HTTP ${result?.status || 'unknown'}`;
+      return {
+        success: false,
+        error: typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg),
+      };
+    }
+  },
+
+  /**
    * Refresh PO items after posting.
    */
   async refreshPoItems(poNumber) {
@@ -197,9 +234,16 @@ function todayISO() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function buildGRBody(stagingItem, poHeader) {
+/**
+ * Build the OData payload for a goods receipt posting.
+ * The PostingID is the outbox item's id — this is the idempotency contract.
+ * Exported so the capture flow can build the payload at enqueue time.
+ */
+export function buildGRBody(stagingItem, poHeader) {
+  const postingId = generateId();
   return {
-    PostingID: generateId(),
+    PostingID: postingId,
+    ClientPostingID: postingId,    // Idempotency key — same UUID, checked by RAP guard
     PurchaseOrder: poHeader.PurchaseOrder,
     PurchaseOrderItem: stagingItem.PurchaseOrderItem,
     Material: stagingItem.Material,

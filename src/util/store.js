@@ -32,6 +32,12 @@ const defaultState = {
     postingInProgress: false,
     poHistory: [],
   },
+  sync: {
+    pendingCount: 0,
+    lastSyncTime: null,
+    syncError: null,
+    isOnline: true,
+  },
 };
 
 const getInitialState = () => {
@@ -42,6 +48,7 @@ const getInitialState = () => {
     // Merge with defaults for schema migration
     parsed.config = { ...defaultState.config, ...(parsed.config || {}) };
     parsed.cache = { ...defaultState.cache, ...(parsed.cache || {}) };
+    parsed.sync = { ...defaultState.sync, ...(parsed.sync || {}) };
     parsed.user.isLoggedIn = false;
     return parsed;
   } catch {
@@ -159,6 +166,7 @@ export const storeActions = {
     store.config = { ...defaultState.config };
     store.plant = defaultState.plant;
     store.cache = { ...defaultState.cache };
+    store.sync = { ...defaultState.sync };
     try { localStorage.removeItem(STORAGE_KEY); } catch {}
   },
   exportConfigQR() {

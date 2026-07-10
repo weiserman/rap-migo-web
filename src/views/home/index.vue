@@ -12,6 +12,19 @@
         <span>{{ stagingCount }} item(s) staged for posting</span>
       </div>
 
+      <div v-if="syncPending > 0" class="message-strip strip-warning">
+        <span class="message-strip-icon">&#9888;</span>
+        <span>{{ syncPending }} item(s) pending sync</span>
+        <button class="btn btn-sm btn-outline sync-btn" @click="triggerSync" :disabled="syncRunning">
+          {{ syncRunning ? 'Syncing...' : 'Sync Now' }}
+        </button>
+      </div>
+
+      <div v-if="syncError" class="message-strip strip-error">
+        <span class="message-strip-icon">&#10006;</span>
+        <span>{{ syncError }}</span>
+      </div>
+
       <div class="section-label">ACTIONS</div>
       <div class="list-group">
         <router-link to="/po_lookup" class="list-item">
@@ -60,13 +73,34 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import MenuTop from '../../components/menutop/index.vue';
 import { store, storeActions } from '../../util/store.js';
 import { useRouter } from 'vue-router';
+import { replayOutbox, isSyncing, getPendingCount, initOutbox } from '../../util/sync/index.js';
 
 const router = useRouter();
 const stagingCount = computed(() => store.cache.stagingList.length);
+const syncPending = computed(() => store.sync.pendingCount);
+const syncError = computed(() => store.sync.syncError);
+const syncRunning = ref(false);
+
+async function triggerSync() {
+  if (syncRunning.value) return;
+  syncRunning.value = true;
+  try {
+    await initOutbox();
+    const count = await getPendingCount();
+    store.sync.pendingCount = count;
+    if (count > 0) {
+      await replayOutbox();
+    }
+  } catch (err) {
+    console.error('[Sync] Manual sync failed:', err);
+  } finally {
+    syncRunning.value = false;
+  }
+}
 
 function lockApp() {
   storeActions.logout();
@@ -87,5 +121,10 @@ function lockApp() {
   font-size: 20px;
   font-weight: 300;
   margin-left: 8px;
+}
+.sync-btn {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 2px 10px;
 }
 </style>

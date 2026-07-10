@@ -19,7 +19,7 @@ async function dbExecute(sql, params = []) {
   const res = await fetch(`${DB_API}/execute`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ database: DB_NAME, sql, params }),
+    body: JSON.stringify({ path: DB_NAME, sql, params }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -32,7 +32,7 @@ async function dbQuery(sql, params = []) {
   const res = await fetch(`${DB_API}/query`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ database: DB_NAME, sql, params }),
+    body: JSON.stringify({ path: DB_NAME, sql, params }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -74,7 +74,7 @@ export async function initOutbox() {
   await fetch(`${DB_API}/create`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ database: DB_NAME }),
+    body: JSON.stringify({ path: DB_NAME }),
   });
 
   await dbExecute(SCHEMA_SQL);

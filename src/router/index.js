@@ -9,6 +9,7 @@ import PoLookup from '../views/po_lookup/index.vue';
 import ReceiptItem from '../views/receipt_item/index.vue';
 import ScannedGoods from '../views/scanned_goods/index.vue';
 import PostingResults from '../views/posting_results/index.vue';
+import SyncStatus from '../views/sync_status/index.vue';
 import PinSetup from '../views/pinsetup/index.vue';
 import PinEnter from '../views/pinenter/index.vue';
 
@@ -24,6 +25,7 @@ const routes = [
   { name: 'receipt_item', path: '/receipt_item/:itemId', component: ReceiptItem, props: true },
   { name: 'scanned_goods', path: '/scanned_goods', component: ScannedGoods },
   { name: 'posting_results', path: '/posting_results', component: PostingResults },
+  { name: 'sync_status', path: '/sync_status', component: SyncStatus },
   { path: '/:catchAll(.*)*', redirect: '/home' },
 ];
 

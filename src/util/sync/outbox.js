@@ -1,105 +1,51 @@
 /**
- * Durable Outbox — SQLite-backed transaction queue.
- * Uses AHM's /api/database/ REST API for persistence.
- * Survives app kill, low-memory eviction, and device reboot.
+ * Durable Outbox — localStorage-backed transaction queue.
  *
  * State machine: PENDING → IN_FLIGHT → CONFIRMED | FAILED
  * On app restart, IN_FLIGHT items reset to PENDING (safe to retry
  * because of RAP idempotency guard on the server).
+ *
+ * Uses localStorage for persistence — survives app kill and low-memory
+ * eviction. Avoids AHM SQLite path-resolution issues entirely.
  */
 
-const DB_NAME = 'databases/migo_gr_outbox';
-const DB_API = '/api/database';
+const STORAGE_KEY = 'migo_gr_outbox';
 
 let initialized = false;
 
-// ─── AHM Database REST Client ─────────────────────────────
+// ─── Storage Helpers ──────────────────────────────────────
 
-async function dbExecute(sql, params = []) {
-  const res = await fetch(`${DB_API}/execute`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: DB_NAME, sql, params }),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`DB execute failed (${res.status}): ${text}`);
+function load() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+  } catch {
+    return [];
   }
-  return res.json().catch(() => ({ rowsAffected: 0 }));
 }
 
-async function dbQuery(sql, params = []) {
-  const res = await fetch(`${DB_API}/query`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: DB_NAME, sql, params }),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`DB query failed (${res.status}): ${text}`);
-  }
-  const data = await res.json();
-  return data.rows || data.results || [];
+function save(items) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
 }
 
-// ─── Schema Init ──────────────────────────────────────────
-
-const SCHEMA_SQL = `
-CREATE TABLE IF NOT EXISTS outbox (
-  id          TEXT PRIMARY KEY,
-  created_at  INTEGER NOT NULL,
-  operator_id TEXT NOT NULL,
-  po_number   TEXT NOT NULL,
-  payload     TEXT NOT NULL,
-  state       TEXT NOT NULL DEFAULT 'PENDING',
-  error_msg   TEXT DEFAULT '',
-  result_json TEXT DEFAULT '',
-  attempts    INTEGER DEFAULT 0,
-  updated_at  INTEGER DEFAULT 0
-)`;
-
-const INDEX_SQL = `
-CREATE INDEX IF NOT EXISTS idx_outbox_state ON outbox(state, created_at)`;
+// ─── Init ─────────────────────────────────────────────────
 
 /**
- * Initialize the outbox database. Creates the table and index if they
- * don't exist. Also resets any IN_FLIGHT items to PENDING (app-restart
- * recovery — items that were mid-flight when the app died).
+ * Initialize the outbox. Resets any IN_FLIGHT items to PENDING
+ * (app-restart recovery — items that were mid-flight when the app died).
  * Safe to call multiple times.
  */
 export async function initOutbox() {
   if (initialized) return;
-
-  // Ensure the parent directory exists (AHM SQLite driver requires it)
-  const dbDir = DB_NAME.substring(0, DB_NAME.lastIndexOf('/'));
-  if (dbDir) {
-    await fetch('/api/fs/mkdir', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: dbDir }),
-    }).catch(() => {}); // non-fatal if already exists
+  const items = load();
+  let changed = false;
+  for (const item of items) {
+    if (item.state === 'IN_FLIGHT') {
+      item.state = 'PENDING';
+      item.updated_at = Date.now();
+      changed = true;
+    }
   }
-
-  // Create/open the database file
-  const createRes = await fetch(`${DB_API}/create`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: DB_NAME, database: DB_NAME }),
-  });
-  if (!createRes.ok) {
-    const text = await createRes.text().catch(() => '');
-    throw new Error(`DB create failed (${createRes.status}): ${text}`);
-  }
-
-  await dbExecute(SCHEMA_SQL);
-  await dbExecute(INDEX_SQL);
-
-  // Recovery: reset IN_FLIGHT → PENDING (app was killed mid-flight)
-  await dbExecute(
-    `UPDATE outbox SET state = 'PENDING', updated_at = ? WHERE state = 'IN_FLIGHT'`,
-    [Date.now()]
-  );
-
+  if (changed) save(items);
   initialized = true;
 }
 
@@ -107,28 +53,29 @@ export async function initOutbox() {
 
 /**
  * Add a new transaction to the outbox.
- * The item.id is the client-generated UUID that serves as the
- * idempotency key (same value sent as PostingID to the RAP BO).
- *
  * @param {Object} item
  * @param {string} item.id          - UUID (idempotency key / PostingID)
  * @param {string} item.operator_id - User identity
  * @param {string} item.po_number   - PurchaseOrder number
  * @param {Object} item.payload     - Full GR body (will be JSON-stringified)
- * @returns {Promise<void>}
  */
 export async function enqueue(item) {
   await initOutbox();
+  const items = load();
   const now = Date.now();
-  const payloadStr = typeof item.payload === 'string'
-    ? item.payload
-    : JSON.stringify(item.payload);
-
-  await dbExecute(
-    `INSERT INTO outbox (id, created_at, operator_id, po_number, payload, state, error_msg, result_json, attempts, updated_at)
-     VALUES (?, ?, ?, ?, ?, 'PENDING', '', '', 0, ?)`,
-    [item.id, now, item.operator_id, item.po_number, payloadStr, now]
-  );
+  items.push({
+    id: item.id,
+    created_at: now,
+    operator_id: item.operator_id,
+    po_number: item.po_number,
+    payload: typeof item.payload === 'string' ? item.payload : JSON.stringify(item.payload),
+    state: 'PENDING',
+    error_msg: '',
+    result_json: '',
+    attempts: 0,
+    updated_at: now,
+  });
+  save(items);
 }
 
 // ─── Query ────────────────────────────────────────────────
@@ -139,10 +86,10 @@ export async function enqueue(item) {
  */
 export async function getNextPending() {
   await initOutbox();
-  const rows = await dbQuery(
-    `SELECT * FROM outbox WHERE state = 'PENDING' ORDER BY created_at ASC LIMIT 1`
-  );
-  return rows.length > 0 ? rows[0] : null;
+  const items = load()
+    .filter(i => i.state === 'PENDING')
+    .sort((a, b) => a.created_at - b.created_at);
+  return items.length > 0 ? items[0] : null;
 }
 
 /**
@@ -151,10 +98,7 @@ export async function getNextPending() {
  */
 export async function getPendingCount() {
   await initOutbox();
-  const rows = await dbQuery(
-    `SELECT COUNT(*) as cnt FROM outbox WHERE state IN ('PENDING', 'IN_FLIGHT')`
-  );
-  return rows.length > 0 ? (rows[0].cnt || 0) : 0;
+  return load().filter(i => i.state === 'PENDING' || i.state === 'IN_FLIGHT').length;
 }
 
 /**
@@ -163,9 +107,9 @@ export async function getPendingCount() {
  */
 export async function getFailedItems() {
   await initOutbox();
-  return dbQuery(
-    `SELECT * FROM outbox WHERE state = 'FAILED' ORDER BY created_at ASC`
-  );
+  return load()
+    .filter(i => i.state === 'FAILED')
+    .sort((a, b) => a.created_at - b.created_at);
 }
 
 /**
@@ -175,21 +119,19 @@ export async function getFailedItems() {
  */
 export async function getConfirmedRecent(limit = 20) {
   await initOutbox();
-  return dbQuery(
-    `SELECT * FROM outbox WHERE state = 'CONFIRMED' ORDER BY updated_at DESC LIMIT ?`,
-    [limit]
-  );
+  return load()
+    .filter(i => i.state === 'CONFIRMED')
+    .sort((a, b) => b.updated_at - a.updated_at)
+    .slice(0, limit);
 }
 
 /**
- * Get all items regardless of state (for diagnostics).
+ * Get all items regardless of state (for display).
  * @returns {Promise<Array>}
  */
 export async function getAllItems() {
   await initOutbox();
-  return dbQuery(
-    `SELECT * FROM outbox ORDER BY created_at DESC`
-  );
+  return load().sort((a, b) => b.created_at - a.created_at);
 }
 
 // ─── State Transitions ────────────────────────────────────
@@ -200,11 +142,14 @@ export async function getAllItems() {
  * @param {string} id
  */
 export async function markInFlight(id) {
-  const now = Date.now();
-  await dbExecute(
-    `UPDATE outbox SET state = 'IN_FLIGHT', attempts = attempts + 1, updated_at = ? WHERE id = ?`,
-    [now, id]
-  );
+  const items = load();
+  const item = items.find(i => i.id === id);
+  if (item) {
+    item.state = 'IN_FLIGHT';
+    item.attempts = (item.attempts || 0) + 1;
+    item.updated_at = Date.now();
+    save(items);
+  }
 }
 
 /**
@@ -213,12 +158,14 @@ export async function markInFlight(id) {
  * @param {Object} result - Server response (materialDocument, etc.)
  */
 export async function markConfirmed(id, result) {
-  const now = Date.now();
-  const resultStr = typeof result === 'string' ? result : JSON.stringify(result);
-  await dbExecute(
-    `UPDATE outbox SET state = 'CONFIRMED', result_json = ?, updated_at = ? WHERE id = ?`,
-    [resultStr, now, id]
-  );
+  const items = load();
+  const item = items.find(i => i.id === id);
+  if (item) {
+    item.state = 'CONFIRMED';
+    item.result_json = typeof result === 'string' ? result : JSON.stringify(result);
+    item.updated_at = Date.now();
+    save(items);
+  }
 }
 
 /**
@@ -227,11 +174,14 @@ export async function markConfirmed(id, result) {
  * @param {string} reason
  */
 export async function markFailed(id, reason) {
-  const now = Date.now();
-  await dbExecute(
-    `UPDATE outbox SET state = 'FAILED', error_msg = ?, updated_at = ? WHERE id = ?`,
-    [reason, now, id]
-  );
+  const items = load();
+  const item = items.find(i => i.id === id);
+  if (item) {
+    item.state = 'FAILED';
+    item.error_msg = reason;
+    item.updated_at = Date.now();
+    save(items);
+  }
 }
 
 // ─── Operator Actions ─────────────────────────────────────
@@ -241,11 +191,14 @@ export async function markFailed(id, reason) {
  * @param {string} id
  */
 export async function retryItem(id) {
-  const now = Date.now();
-  await dbExecute(
-    `UPDATE outbox SET state = 'PENDING', error_msg = '', updated_at = ? WHERE id = ?`,
-    [now, id]
-  );
+  const items = load();
+  const item = items.find(i => i.id === id);
+  if (item) {
+    item.state = 'PENDING';
+    item.error_msg = '';
+    item.updated_at = Date.now();
+    save(items);
+  }
 }
 
 /**
@@ -254,7 +207,8 @@ export async function retryItem(id) {
  */
 export async function discardItem(id) {
   await initOutbox();
-  await dbExecute(`DELETE FROM outbox WHERE id = ?`, [id]);
+  const items = load().filter(i => i.id !== id);
+  save(items);
 }
 
 /**
@@ -264,8 +218,8 @@ export async function discardItem(id) {
 export async function purgeOldConfirmed(maxAgeMs = 86400000) {
   await initOutbox();
   const cutoff = Date.now() - maxAgeMs;
-  await dbExecute(
-    `DELETE FROM outbox WHERE state = 'CONFIRMED' AND updated_at < ?`,
-    [cutoff]
+  const items = load().filter(i =>
+    !(i.state === 'CONFIRMED' && i.updated_at < cutoff)
   );
+  save(items);
 }

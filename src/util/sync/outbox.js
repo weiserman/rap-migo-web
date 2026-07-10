@@ -70,6 +70,16 @@ CREATE INDEX IF NOT EXISTS idx_outbox_state ON outbox(state, created_at)`;
 export async function initOutbox() {
   if (initialized) return;
 
+  // Ensure the parent directory exists (AHM SQLite driver requires it)
+  const dbDir = DB_NAME.substring(0, DB_NAME.lastIndexOf('/'));
+  if (dbDir) {
+    await fetch('/api/fs/mkdir', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: dbDir }),
+    }).catch(() => {}); // non-fatal if already exists
+  }
+
   // Create/open the database file
   const createRes = await fetch(`${DB_API}/create`, {
     method: 'POST',

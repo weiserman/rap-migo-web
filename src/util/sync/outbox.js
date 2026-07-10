@@ -8,7 +8,7 @@
  * because of RAP idempotency guard on the server).
  */
 
-const DB_NAME = 'migo_gr_outbox';
+const DB_NAME = 'databases/migo_gr_outbox';
 const DB_API = '/api/database';
 
 let initialized = false;

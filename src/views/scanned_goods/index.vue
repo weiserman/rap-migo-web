@@ -164,7 +164,7 @@
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
 import MenuTop from '../../components/menutop/index.vue';
 import { store, storeActions } from '../../util/store.js';
-import { buildGRBody } from '../../util/entities.js';
+import { buildGRBody, EntityService } from '../../util/entities.js';
 import {
   enqueue, getPendingCount, getAllItems, initOutbox,
   retryItem, discardItem, purgeOldConfirmed,
@@ -309,7 +309,6 @@ async function triggerSync() {
       addLogEntry('success', `Queued ${items.length} item(s) to outbox`);
 
       try {
-        const { EntityService } = await import('../../util/entities.js');
         await EntityService.refreshPoItems(poHeader.PurchaseOrder);
       } catch {
         // non-fatal

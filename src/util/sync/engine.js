@@ -19,6 +19,7 @@ import {
   getPendingCount,
 } from './outbox.js';
 import { store } from '../store.js';
+import { EntityService } from '../entities.js';
 
 // ─── Constants ────────────────────────────────────────────
 
@@ -86,16 +87,6 @@ export function onSyncProgress(callback) {
 // ─── Core Replay Loop ─────────────────────────────────────
 
 /**
- * Get the EntityService dynamically to avoid circular imports.
- * The EntityService imports from odata.js which imports from store.js;
- * importing it here at call time breaks the cycle.
- */
-async function getEntityService() {
-  const mod = await import('../entities.js');
-  return mod.EntityService;
-}
-
-/**
  * Replay all PENDING items in the outbox.
  *
  * For each item:
@@ -156,8 +147,6 @@ export async function replayOutbox(onProgress) {
           // Mark IN_FLIGHT before each attempt
           await markInFlight(item.id);
 
-          // Post via EntityService (single-doc $batch)
-          const EntityService = await getEntityService();
           const result = await EntityService.postFromOutbox(item);
 
           if (result.success) {

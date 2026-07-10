@@ -71,11 +71,15 @@ export async function initOutbox() {
   if (initialized) return;
 
   // Create/open the database file
-  await fetch(`${DB_API}/create`, {
+  const createRes = await fetch(`${DB_API}/create`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: DB_NAME }),
+    body: JSON.stringify({ path: DB_NAME, database: DB_NAME }),
   });
+  if (!createRes.ok) {
+    const text = await createRes.text().catch(() => '');
+    throw new Error(`DB create failed (${createRes.status}): ${text}`);
+  }
 
   await dbExecute(SCHEMA_SQL);
   await dbExecute(INDEX_SQL);

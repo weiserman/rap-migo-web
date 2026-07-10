@@ -11,10 +11,8 @@
             <span class="online-dot" :class="isOnline ? 'dot-online' : 'dot-offline'"></span>
             <span class="online-label">{{ isOnline ? 'Online' : 'Offline' }}</span>
           </div>
-          <div class="sync-summary-actions">
-            <button class="btn btn-sm btn-primary" @click="triggerSync" :disabled="syncRunning || totalPending === 0">
-              {{ syncRunning ? 'Syncing...' : 'Sync Now' }}
-            </button>
+          <div v-if="lastSyncTime" class="last-sync-label">
+            {{ formatTime(lastSyncTime) }}
           </div>
         </div>
         <div class="summary-row">
@@ -37,9 +35,19 @@
         </div>
       </div>
 
-      <!-- Staged items (pre-outbox, not yet confirmed) -->
+      <!-- Sync Now button (primary action) -->
+      <div v-if="totalPending > 0" style="margin-bottom: 16px">
+        <button class="btn btn-primary btn-block" @click="triggerSync"
+          :disabled="syncRunning">
+          {{ syncRunning ? 'Syncing...' :
+             stagingList.length > 0 ? 'Queue & Sync ' + totalPending + ' item(s)' :
+             'Sync Now (' + totalPending + ')' }}
+        </button>
+      </div>
+
+      <!-- Staged items (waiting for Sync Now) -->
       <div v-if="stagingList.length > 0">
-        <div class="section-label">STAGED &mdash; NOT YET QUEUED</div>
+        <div class="section-label">STAGED ITEMS</div>
         <div class="list-group">
           <div v-for="(item, idx) in stagingList" :key="'staged-' + idx" class="list-item staged-item">
             <div class="sync-status-dot dot-staged"></div>
@@ -59,35 +67,10 @@
             <button class="btn btn-error btn-sm" @click="removeItem(idx)">Remove</button>
           </div>
         </div>
-
-        <!-- Confirm staging action -->
-        <div style="margin-top: 12px">
-          <div class="card" style="text-align: center">
-            <div style="font-size: 14px; margin-bottom: 4px; font-weight: 600">
-              {{ stagingList.length }} item(s) ready to queue
-            </div>
-            <div style="font-size: 12px; color: var(--color-text-secondary)">
-              PO {{ selectedPO?.PurchaseOrder || '' }} &middot; Plant {{ selectedPO?.Plant || '' }}
-            </div>
-          </div>
-
-          <button v-if="!confirmVisible && !staging" class="btn btn-success btn-block" @click="showConfirm">
-            Queue for Posting
-          </button>
-
-          <div v-if="confirmVisible && !staging" class="confirm-group">
-            <div class="message-strip strip-warning" style="margin-bottom: 12px">
-              <span class="message-strip-icon">&#9888;</span>
-              <span>Queue {{ stagingList.length }} item(s) for posting? Items will be saved and posted in the background.</span>
-            </div>
-            <div style="display: flex; gap: 12px">
-              <button class="btn btn-outline" style="flex: 1" @click="confirmVisible = false">Cancel</button>
-              <button class="btn btn-success" style="flex: 1" @click="doPost">Confirm &amp; Queue</button>
-            </div>
-          </div>
-
-          <div v-if="staging" style="text-align: center">
-            <button class="btn btn-success btn-block" disabled>Queuing...</button>
+        <div class="card" style="text-align: center; margin-top: 8px">
+          <div style="font-size: 12px; color: var(--color-text-secondary)">
+            {{ stagingList.length }} item(s) &middot;
+            PO {{ selectedPO?.PurchaseOrder || '' }} &middot; Plant {{ selectedPO?.Plant || '' }}
           </div>
         </div>
       </div>
@@ -98,7 +81,7 @@
         <div>No items staged or queued. Go back and add items.</div>
       </div>
 
-      <!-- Outbox items (post-confirm, tracking sync state) -->
+      <!-- Outbox items (post-enqueue, tracking sync state) -->
       <div v-if="outboxItems.length > 0">
         <div class="section-label">SYNC QUEUE</div>
 
@@ -157,13 +140,28 @@
           </button>
         </div>
       </div>
+
+      <!-- Activity Log -->
+      <div v-if="activityLog.length > 0" class="activity-log-section">
+        <div class="section-label activity-log-header" @click="logExpanded = !logExpanded">
+          ACTIVITY LOG {{ logExpanded ? '\u25BC' : '\u25B6' }}
+          <span class="log-count">{{ activityLog.length }}</span>
+        </div>
+        <div v-if="logExpanded" class="activity-log-list">
+          <div v-for="(entry, idx) in activityLog" :key="idx" class="log-entry" :class="'log-' + entry.level">
+            <span class="log-time">{{ formatLogTime(entry.timestamp) }}</span>
+            <span class="log-dot" :class="'dot-' + entry.level"></span>
+            <span class="log-message">{{ entry.message }}</span>
+            <span v-if="entry.detail" class="log-detail">{{ entry.detail }}</span>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onUnmounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
 import MenuTop from '../../components/menutop/index.vue';
 import { store, storeActions } from '../../util/store.js';
 import { buildGRBody } from '../../util/entities.js';
@@ -173,17 +171,17 @@ import {
 } from '../../util/sync/outbox.js';
 import { replayOutbox, isSyncing, onSyncProgress } from '../../util/sync/index.js';
 
-const router = useRouter();
-const staging = ref(false);
-const confirmVisible = ref(false);
 const filter = ref('all');
 const syncRunning = ref(false);
 const outboxItems = ref([]);
+const activityLog = ref([]);
+const logExpanded = ref(false);
 let unsubscribe = null;
 
 const stagingList = computed(() => store.cache.stagingList);
 const selectedPO = computed(() => store.cache.selectedPO);
 const isOnline = computed(() => store.sync.isOnline);
+const lastSyncTime = computed(() => store.sync.lastSyncTime);
 
 const outboxPending = computed(() => outboxItems.value.filter(i => i.state === 'PENDING'));
 const outboxInFlight = computed(() => outboxItems.value.filter(i => i.state === 'IN_FLIGHT'));
@@ -199,6 +197,40 @@ const filteredOutbox = computed(() => {
     default: return outboxItems.value;
   }
 });
+
+// ─── Activity Log ──────────────────────────────────────────
+
+function addLogEntry(level, message, detail) {
+  activityLog.value.unshift({
+    timestamp: Date.now(),
+    level,
+    message,
+    detail: detail || '',
+  });
+  if (activityLog.value.length > 50) activityLog.value.length = 50;
+}
+
+function formatLogTime(ts) {
+  const d = new Date(ts);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+// Watch online/offline changes
+watch(isOnline, (online) => {
+  addLogEntry(online ? 'success' : 'warning',
+    online ? 'Device is online' : 'Device is offline');
+});
+
+// ─── Outbox Helpers ────────────────────────────────────────
+
+async function refreshOutbox() {
+  try {
+    await initOutbox();
+    outboxItems.value = await getAllItems();
+  } catch {
+    // non-fatal
+  }
+}
 
 function stateClass(state) {
   switch (state) {
@@ -243,119 +275,118 @@ function parseResult(json) {
   }
 }
 
-async function refreshOutbox() {
-  try {
-    await initOutbox();
-    outboxItems.value = await getAllItems();
-  } catch {
-    // non-fatal
-  }
-}
-
 function removeItem(idx) {
   const item = stagingList.value[idx];
   storeActions.removeFromStaging(item.PurchaseOrder, item.PurchaseOrderItem);
 }
 
-function showConfirm() {
-  if (!selectedPO.value || stagingList.value.length === 0) return;
-  confirmVisible.value = true;
-}
-
-async function doPost() {
-  confirmVisible.value = false;
-  staging.value = true;
-
-  try {
-    const poHeader = selectedPO.value;
-    const items = stagingList.value;
-    const operatorId = store.user.name || 'unknown';
-
-    for (const item of items) {
-      const payload = buildGRBody(item, poHeader);
-      await enqueue({
-        id: payload.PostingID,
-        operator_id: operatorId,
-        po_number: poHeader.PurchaseOrder,
-        payload: payload,
-      });
-    }
-
-    storeActions.clearStaging();
-
-    const pendingCount = await getPendingCount();
-    store.sync.pendingCount = pendingCount;
-
-    storeActions.setPostingResults(
-      items.map((item) => ({
-        success: true,
-        postingId: item.PurchaseOrderItem,
-        message: 'Queued for posting',
-        PurchaseOrder: poHeader.PurchaseOrder,
-        PurchaseOrderItem: item.PurchaseOrderItem,
-        Material: item.Material,
-      }))
-    );
-
-    try {
-      const { EntityService } = await import('../../util/entities.js');
-      await EntityService.refreshPoItems(poHeader.PurchaseOrder);
-    } catch {
-      // non-fatal
-    }
-
-    // Refresh the outbox list immediately
-    await refreshOutbox();
-
-    // Trigger sync engine replay (runs in background)
-    if (!isSyncing()) {
-      replayOutbox();
-    }
-  } catch (err) {
-    alert(`Failed to queue items: ${err.message}`);
-  } finally {
-    staging.value = false;
-  }
-}
+// ─── Unified Sync Now ──────────────────────────────────────
 
 async function triggerSync() {
   if (syncRunning.value) return;
   syncRunning.value = true;
+
   try {
+    // Phase 1: Enqueue any staged items to outbox
+    if (stagingList.value.length > 0 && selectedPO.value) {
+      const poHeader = selectedPO.value;
+      const items = [...stagingList.value];
+      const operatorId = store.user.name || 'unknown';
+
+      addLogEntry('info', `Queueing ${items.length} staged item(s)`, `PO ${poHeader.PurchaseOrder}`);
+
+      for (const item of items) {
+        const payload = buildGRBody(item, poHeader);
+        await enqueue({
+          id: payload.PostingID,
+          operator_id: operatorId,
+          po_number: poHeader.PurchaseOrder,
+          payload,
+        });
+      }
+
+      storeActions.clearStaging();
+      addLogEntry('success', `Queued ${items.length} item(s) to outbox`);
+
+      try {
+        const { EntityService } = await import('../../util/entities.js');
+        await EntityService.refreshPoItems(poHeader.PurchaseOrder);
+      } catch {
+        // non-fatal
+      }
+    }
+
+    // Phase 2: Trigger replay
     await initOutbox();
     const count = await getPendingCount();
     store.sync.pendingCount = count;
+
     if (count > 0) {
+      addLogEntry('info', 'Starting sync...', `${count} pending item(s)`);
       await replayOutbox();
+    } else {
+      addLogEntry('info', 'No pending items to sync');
     }
+
     await refreshOutbox();
   } catch (err) {
-    console.error('[Sync] Manual sync failed:', err);
+    addLogEntry('error', `Sync failed: ${err.message}`);
+    console.error('[Sync] Sync Now failed:', err);
   } finally {
     syncRunning.value = false;
   }
 }
 
+// ─── Outbox Item Actions ───────────────────────────────────
+
 async function retryOne(id) {
   await retryItem(id);
+  addLogEntry('info', 'Item reset to pending', 'Will retry on next sync');
   await refreshOutbox();
 }
 
 async function discardOne(id) {
   await discardItem(id);
+  addLogEntry('warning', 'Item discarded', 'Removed from outbox');
   await refreshOutbox();
   store.sync.pendingCount = await getPendingCount();
 }
 
 async function clearConfirmed() {
+  const count = outboxConfirmed.value.length;
   await purgeOldConfirmed(0);
+  addLogEntry('info', `Cleared ${count} synced item(s)`);
   await refreshOutbox();
 }
 
+// ─── Lifecycle ─────────────────────────────────────────────
+
 onMounted(async () => {
   await refreshOutbox();
-  unsubscribe = onSyncProgress(async () => {
-    await refreshOutbox();
+
+  unsubscribe = onSyncProgress((progress) => {
+    refreshOutbox();
+
+    if (progress.lastResult) {
+      const r = progress.lastResult;
+      if (r.state === 'IN_FLIGHT') {
+        addLogEntry('info', `Posting PO ${r.po_number}...`,
+          `Attempt ${r.attempt}`);
+      } else if (r.state === 'CONFIRMED') {
+        addLogEntry('success', `PO ${r.po_number} synced`,
+          r.materialDocument ? `Mat.Doc ${r.materialDocument}` : '');
+      } else if (r.state === 'FAILED') {
+        addLogEntry('error', `PO ${r.po_number} failed`, r.error || '');
+      }
+    }
+
+    if (progress.status === 'idle') {
+      addLogEntry('info', 'Sync complete',
+        `${progress.confirmed} synced, ${progress.failed} failed`);
+    } else if (progress.status === 'error') {
+      addLogEntry('error', 'Sync ended with errors',
+        `${progress.confirmed} synced, ${progress.failed} failed`);
+    }
   });
 });
 
@@ -401,6 +432,10 @@ onUnmounted(() => {
 .online-label {
   font-size: 11px;
   font-weight: 500;
+  color: var(--color-text-secondary);
+}
+.last-sync-label {
+  font-size: 11px;
   color: var(--color-text-secondary);
 }
 .summary-row {
@@ -512,7 +547,58 @@ onUnmounted(() => {
   opacity: 0.7;
 }
 
-.confirm-group {
-  margin-top: 8px;
+/* Activity Log */
+.activity-log-section {
+  margin-top: 16px;
+}
+.activity-log-header {
+  cursor: pointer;
+  user-select: none;
+}
+.log-count {
+  font-weight: 400;
+  opacity: 0.6;
+  margin-left: 4px;
+}
+.activity-log-list {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 8px;
+  background: var(--color-surface);
+}
+.log-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.log-entry:last-child {
+  border-bottom: none;
+}
+.log-time {
+  font-family: monospace;
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+  font-size: 11px;
+}
+.log-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex-shrink: 0;
+}
+.dot-info { background: var(--color-primary); }
+.dot-warning { background: var(--color-warning); }
+.log-message {
+  font-weight: 500;
+}
+.log-detail {
+  color: var(--color-text-secondary);
+  font-size: 11px;
 }
 </style>

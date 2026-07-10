@@ -142,6 +142,15 @@ export async function replayOutbox(onProgress) {
       let transportRetries = 0;
       let posted = false;
 
+      // Notify: item transitioning to IN_FLIGHT
+      notifyProgress({
+        pending: remaining,
+        confirmed,
+        failed,
+        status: 'syncing',
+        lastResult: { id: item.id, po_number: item.po_number, state: 'IN_FLIGHT', attempt: item.attempts + 1 },
+      });
+
       while (!posted && transportRetries <= MAX_TRANSPORT_RETRIES) {
         try {
           // Mark IN_FLIGHT before each attempt
@@ -165,7 +174,7 @@ export async function replayOutbox(onProgress) {
               confirmed,
               failed,
               status: 'syncing',
-              lastResult: { id: item.id, success: true, ...result },
+              lastResult: { id: item.id, po_number: item.po_number, success: true, state: 'CONFIRMED', ...result },
             });
           } else {
             // Business error — mark FAILED (no retry)
@@ -178,7 +187,7 @@ export async function replayOutbox(onProgress) {
               confirmed,
               failed,
               status: 'syncing',
-              lastResult: { id: item.id, success: false, error: result.error },
+              lastResult: { id: item.id, po_number: item.po_number, success: false, state: 'FAILED', error: result.error },
             });
           }
         } catch (err) {
@@ -186,14 +195,19 @@ export async function replayOutbox(onProgress) {
           transportRetries++;
           if (transportRetries > MAX_TRANSPORT_RETRIES) {
             // Exhausted retries — mark FAILED
-            await markFailed(
-              item.id,
-              `Network unreachable after ${MAX_TRANSPORT_RETRIES} attempts: ${err.message}`
-            );
+            const failReason = `Network unreachable after ${MAX_TRANSPORT_RETRIES} attempts: ${err.message}`;
+            await markFailed(item.id, failReason);
             failed++;
             posted = true;
 
             store.sync.syncError = `Failed to post ${item.po_number}: ${err.message}`;
+            notifyProgress({
+              pending: await getPendingCount(),
+              confirmed,
+              failed,
+              status: 'syncing',
+              lastResult: { id: item.id, po_number: item.po_number, success: false, state: 'FAILED', error: failReason },
+            });
           } else {
             // Wait before retry
             const delay = backoff(transportRetries);
@@ -239,8 +253,8 @@ export function setupAutoTrigger() {
 
   const handleOnline = () => {
     store.sync.isOnline = true;
-    console.log('[Sync] Device online — triggering replay');
-    replayOutbox();
+    console.log('[Sync] Device online');
+    // No auto-replay -- user must tap "Sync Now"
   };
 
   const handleOffline = () => {
@@ -278,17 +292,12 @@ export function isSyncing() {
 
 /**
  * Start the sync engine — initializes the outbox, recovers any
- * in-flight items, and begins replaying pending transactions.
+ * in-flight items, and sets up connectivity listeners.
  * Called once on app startup.
+ * Items wait for explicit "Sync Now" — no auto-replay.
  */
 export async function startSyncEngine() {
   await initOutbox();
   setupAutoTrigger();
-
-  // Check for pending items and start replay if any exist
-  const count = await getPendingCount();
-  if (count > 0) {
-    console.log(`[Sync] Found ${count} pending items — starting replay`);
-    replayOutbox();
-  }
+  // No auto-replay -- items wait for explicit "Sync Now"
 }

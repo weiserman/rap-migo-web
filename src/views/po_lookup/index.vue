@@ -90,7 +90,7 @@ async function lookupPO() {
     }
 
     storeActions.setSelectedPO(po);
-    router.push({ name: 'po_items', params: { poNumber: po.PurchaseOrder } });
+    router.push('/scanner');
   } catch (err) {
     error.value = err.message || 'Failed to look up PO.';
   } finally {

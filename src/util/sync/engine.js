@@ -20,6 +20,7 @@ import {
 } from './outbox.js';
 import { store } from '../store.js';
 import { EntityService } from '../entities.js';
+import { addLogEntry } from '../activityLog.js';
 
 // ─── Constants ────────────────────────────────────────────
 
@@ -158,6 +159,9 @@ export async function replayOutbox(onProgress) {
             confirmed++;
             posted = true;
 
+            addLogEntry('success', `PO ${item.po_number} synced`,
+              result.materialDocument ? `Mat.Doc ${result.materialDocument}` : '');
+
             notifyProgress({
               pending: await getPendingCount(),
               confirmed,
@@ -170,6 +174,8 @@ export async function replayOutbox(onProgress) {
             await markFailed(item.id, result.error || 'Unknown business error');
             failed++;
             posted = true;
+
+            addLogEntry('error', `PO ${item.po_number} failed`, result.error || 'Unknown business error');
 
             notifyProgress({
               pending: await getPendingCount(),
@@ -190,6 +196,8 @@ export async function replayOutbox(onProgress) {
             posted = true;
 
             store.sync.syncError = `Failed to post ${item.po_number}: ${err.message}`;
+            addLogEntry('error', `PO ${item.po_number} failed`,
+              `Network unreachable after ${MAX_TRANSPORT_RETRIES} attempts: ${err.message}`);
             notifyProgress({
               pending: await getPendingCount(),
               confirmed,
@@ -213,6 +221,8 @@ export async function replayOutbox(onProgress) {
     store.sync.lastSyncTime = Date.now();
 
     const finalStatus = failed > 0 ? 'error' : 'idle';
+    addLogEntry(failed > 0 ? 'error' : 'success', 'Sync complete',
+      `${confirmed} synced, ${failed} failed`);
     notifyProgress({ pending: finalPending, confirmed, failed, status: finalStatus });
     if (onProgress) onProgress({ pending: finalPending, confirmed, failed, status: finalStatus });
 

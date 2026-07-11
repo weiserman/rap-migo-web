@@ -67,7 +67,7 @@
           <span class="nav-arrow">&#8250;</span>
         </router-link>
 
-        <router-link v-if="stagingCount > 0" to="/scanned_goods" class="list-item">
+        <router-link v-if="stagingCount > 0" to="/scanner" class="list-item">
           <div class="list-item-content">
             <div class="list-item-title">Review Staged Items</div>
             <div class="list-item-desc">{{ stagingCount }} item(s) ready to post</div>
@@ -80,6 +80,22 @@
           <div class="list-item-content">
             <div class="list-item-title">Configuration</div>
             <div class="list-item-desc">Server, credentials, plant settings</div>
+          </div>
+          <span class="nav-arrow">&#8250;</span>
+        </router-link>
+
+        <router-link to="/activity_log" class="list-item">
+          <div class="list-item-content">
+            <div class="list-item-title">Activity Log</div>
+            <div class="list-item-desc">Scan history, sync events, diagnostics</div>
+          </div>
+          <span class="nav-arrow">&#8250;</span>
+        </router-link>
+
+        <router-link to="/scanned_goods" class="list-item">
+          <div class="list-item-content">
+            <div class="list-item-title">Sync Queue</div>
+            <div class="list-item-desc">View and manage outbox items</div>
           </div>
           <span class="nav-arrow">&#8250;</span>
         </router-link>

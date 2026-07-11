@@ -1,6 +1,6 @@
 <template>
   <div class="page">
-    <MenuTop title="Staged Items" :showBack="true" />
+    <MenuTop title="Sync Queue" :showBack="true" />
     <div class="page-content">
 
       <!-- Sync status summary card -->
@@ -17,10 +17,6 @@
         </div>
         <div class="summary-row">
           <div class="summary-item">
-            <div class="summary-count count-staged">{{ stagingList.length }}</div>
-            <div class="summary-label">Staged</div>
-          </div>
-          <div class="summary-item">
             <div class="summary-count count-pending">{{ outboxPending.length }}</div>
             <div class="summary-label">Pending</div>
           </div>
@@ -35,53 +31,21 @@
         </div>
       </div>
 
-      <!-- Sync Now button (primary action) -->
-      <div v-if="totalPending > 0" style="margin-bottom: 16px">
+      <!-- Sync Now button -->
+      <div v-if="outboxItems.length > 0" style="margin-bottom: 16px">
         <button class="btn btn-primary btn-block" @click="triggerSync"
           :disabled="syncRunning">
-          {{ syncRunning ? 'Syncing...' :
-             stagingList.length > 0 ? 'Queue & Sync ' + totalPending + ' item(s)' :
-             'Sync Now (' + totalPending + ')' }}
+          {{ syncRunning ? 'Syncing...' : 'Sync Now (' + (outboxPending.length + outboxInFlight.length) + ')' }}
         </button>
       </div>
 
-      <!-- Staged items (waiting for Sync Now) -->
-      <div v-if="stagingList.length > 0">
-        <div class="section-label">STAGED ITEMS</div>
-        <div class="list-group">
-          <div v-for="(item, idx) in stagingList" :key="'staged-' + idx" class="list-item staged-item">
-            <div class="sync-status-dot dot-staged"></div>
-            <div class="list-item-content">
-              <div class="list-item-title">
-                {{ item.Material }}
-                <span class="object-status status-open">Staged</span>
-              </div>
-              <div class="list-item-desc">
-                Item {{ item.PurchaseOrderItem }} &middot;
-                Qty: {{ item.recptQty }} {{ item.OrderUnit }}
-              </div>
-              <div v-if="item.postingDate" class="list-item-desc" style="margin-top: 2px">
-                Posting date: {{ item.postingDate }}
-              </div>
-            </div>
-            <button class="btn btn-error btn-sm" @click="removeItem(idx)">Remove</button>
-          </div>
-        </div>
-        <div class="card" style="text-align: center; margin-top: 8px">
-          <div style="font-size: 12px; color: var(--color-text-secondary)">
-            {{ stagingList.length }} item(s) &middot;
-            PO {{ selectedPO?.PurchaseOrder || '' }} &middot; Plant {{ selectedPO?.Plant || '' }}
-          </div>
-        </div>
-      </div>
-
-      <!-- Empty state when nothing staged and nothing in outbox -->
-      <div v-if="stagingList.length === 0 && outboxItems.length === 0" class="empty-state">
+      <!-- Empty state -->
+      <div v-if="outboxItems.length === 0" class="empty-state">
         <div class="empty-state-icon">&#128230;</div>
-        <div>No items staged or queued. Go back and add items.</div>
+        <div>No items in the sync queue.</div>
       </div>
 
-      <!-- Outbox items (post-enqueue, tracking sync state) -->
+      <!-- Outbox items -->
       <div v-if="outboxItems.length > 0">
         <div class="section-label">SYNC QUEUE</div>
 
@@ -140,46 +104,26 @@
           </button>
         </div>
       </div>
-
-      <!-- Activity Log -->
-      <div v-if="activityLog.length > 0" class="activity-log-section">
-        <div class="section-label activity-log-header" @click="logExpanded = !logExpanded">
-          ACTIVITY LOG {{ logExpanded ? '\u25BC' : '\u25B6' }}
-          <span class="log-count">{{ activityLog.length }}</span>
-        </div>
-        <div v-if="logExpanded" class="activity-log-list">
-          <div v-for="(entry, idx) in activityLog" :key="idx" class="log-entry" :class="'log-' + entry.level">
-            <span class="log-time">{{ formatLogTime(entry.timestamp) }}</span>
-            <span class="log-dot" :class="'dot-' + entry.level"></span>
-            <span class="log-message">{{ entry.message }}</span>
-            <span v-if="entry.detail" class="log-detail">{{ entry.detail }}</span>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
+import { computed, ref, onMounted, onUnmounted } from 'vue';
 import MenuTop from '../../components/menutop/index.vue';
-import { store, storeActions } from '../../util/store.js';
-import { buildGRBody, EntityService } from '../../util/entities.js';
+import { store } from '../../util/store.js';
 import {
-  enqueue, getPendingCount, getAllItems, initOutbox,
+  getPendingCount, getAllItems, initOutbox,
   retryItem, discardItem, purgeOldConfirmed,
 } from '../../util/sync/outbox.js';
-import { replayOutbox, isSyncing, onSyncProgress } from '../../util/sync/index.js';
+import { replayOutbox, onSyncProgress } from '../../util/sync/index.js';
+import { addLogEntry } from '../../util/activityLog.js';
 
 const filter = ref('all');
 const syncRunning = ref(false);
 const outboxItems = ref([]);
-const activityLog = ref([]);
-const logExpanded = ref(false);
 let unsubscribe = null;
 
-const stagingList = computed(() => store.cache.stagingList);
-const selectedPO = computed(() => store.cache.selectedPO);
 const isOnline = computed(() => store.sync.isOnline);
 const lastSyncTime = computed(() => store.sync.lastSyncTime);
 
@@ -187,7 +131,6 @@ const outboxPending = computed(() => outboxItems.value.filter(i => i.state === '
 const outboxInFlight = computed(() => outboxItems.value.filter(i => i.state === 'IN_FLIGHT'));
 const outboxConfirmed = computed(() => outboxItems.value.filter(i => i.state === 'CONFIRMED'));
 const outboxFailed = computed(() => outboxItems.value.filter(i => i.state === 'FAILED'));
-const totalPending = computed(() => stagingList.value.length + outboxPending.value.length + outboxInFlight.value.length);
 
 const filteredOutbox = computed(() => {
   switch (filter.value) {
@@ -198,30 +141,7 @@ const filteredOutbox = computed(() => {
   }
 });
 
-// ─── Activity Log ──────────────────────────────────────────
-
-function addLogEntry(level, message, detail) {
-  activityLog.value.unshift({
-    timestamp: Date.now(),
-    level,
-    message,
-    detail: detail || '',
-  });
-  if (activityLog.value.length > 50) activityLog.value.length = 50;
-}
-
-function formatLogTime(ts) {
-  const d = new Date(ts);
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-}
-
-// Watch online/offline changes
-watch(isOnline, (online) => {
-  addLogEntry(online ? 'success' : 'warning',
-    online ? 'Device is online' : 'Device is offline');
-});
-
-// ─── Outbox Helpers ────────────────────────────────────────
+// ─── Outbox Helpers ────────────────────────────────────
 
 async function refreshOutbox() {
   try {
@@ -275,47 +195,13 @@ function parseResult(json) {
   }
 }
 
-function removeItem(idx) {
-  const item = stagingList.value[idx];
-  storeActions.removeFromStaging(item.PurchaseOrder, item.PurchaseOrderItem);
-}
-
-// ─── Unified Sync Now ──────────────────────────────────────
+// ─── Sync Now ──────────────────────────────────────────
 
 async function triggerSync() {
   if (syncRunning.value) return;
   syncRunning.value = true;
 
   try {
-    // Phase 1: Enqueue any staged items to outbox
-    if (stagingList.value.length > 0 && selectedPO.value) {
-      const poHeader = selectedPO.value;
-      const items = [...stagingList.value];
-      const operatorId = store.user.name || 'unknown';
-
-      addLogEntry('info', `Queueing ${items.length} staged item(s)`, `PO ${poHeader.PurchaseOrder}`);
-
-      for (const item of items) {
-        const payload = buildGRBody(item, poHeader);
-        await enqueue({
-          id: payload.PostingID,
-          operator_id: operatorId,
-          po_number: poHeader.PurchaseOrder,
-          payload,
-        });
-      }
-
-      storeActions.clearStaging();
-      addLogEntry('success', `Queued ${items.length} item(s) to outbox`);
-
-      try {
-        await EntityService.refreshPoItems(poHeader.PurchaseOrder);
-      } catch {
-        // non-fatal
-      }
-    }
-
-    // Phase 2: Trigger replay
     await initOutbox();
     const count = await getPendingCount();
     store.sync.pendingCount = count;
@@ -330,13 +216,12 @@ async function triggerSync() {
     await refreshOutbox();
   } catch (err) {
     addLogEntry('error', `Sync failed: ${err.message}`);
-    console.error('[Sync] Sync Now failed:', err);
   } finally {
     syncRunning.value = false;
   }
 }
 
-// ─── Outbox Item Actions ───────────────────────────────────
+// ─── Outbox Item Actions ───────────────────────────────
 
 async function retryOne(id) {
   await retryItem(id);
@@ -358,27 +243,13 @@ async function clearConfirmed() {
   await refreshOutbox();
 }
 
-// ─── Lifecycle ─────────────────────────────────────────────
+// ─── Lifecycle ─────────────────────────────────────────
 
 onMounted(async () => {
   await refreshOutbox();
 
   unsubscribe = onSyncProgress((progress) => {
     refreshOutbox();
-
-    if (progress.lastResult) {
-      const r = progress.lastResult;
-      if (r.state === 'IN_FLIGHT') {
-        addLogEntry('info', `Posting PO ${r.po_number}...`,
-          `Attempt ${r.attempt}`);
-      } else if (r.state === 'CONFIRMED') {
-        addLogEntry('success', `PO ${r.po_number} synced`,
-          r.materialDocument ? `Mat.Doc ${r.materialDocument}` : '');
-      } else if (r.state === 'FAILED') {
-        addLogEntry('error', `PO ${r.po_number} failed`, r.error || '');
-      }
-    }
-
     if (progress.status === 'idle') {
       addLogEntry('info', 'Sync complete',
         `${progress.confirmed} synced, ${progress.failed} failed`);
@@ -403,7 +274,6 @@ onUnmounted(() => {
   padding: 0 4px 8px;
 }
 
-/* Sync summary card */
 .sync-summary-card {
   border-left: 3px solid var(--color-primary);
 }
@@ -450,7 +320,6 @@ onUnmounted(() => {
   font-weight: 700;
   line-height: 1.2;
 }
-.count-staged { color: var(--color-primary); }
 .count-pending { color: var(--color-warning); }
 .count-synced { color: var(--color-success); }
 .count-failed { color: var(--color-error); }
@@ -461,12 +330,6 @@ onUnmounted(() => {
   color: var(--color-text-secondary);
 }
 
-/* Staged items */
-.staged-item {
-  gap: 10px;
-}
-
-/* Sync status dots */
 .sync-status-dot {
   width: 10px;
   height: 10px;
@@ -474,13 +337,11 @@ onUnmounted(() => {
   flex-shrink: 0;
   margin-top: 4px;
 }
-.dot-staged { background: var(--color-primary); }
 .dot-warning { background: var(--color-warning); }
 .dot-open { background: var(--color-primary); }
 .dot-success { background: var(--color-success); }
 .dot-error { background: var(--color-error); }
 
-/* Sync item row */
 .sync-item {
   gap: 10px;
 }
@@ -514,7 +375,6 @@ onUnmounted(() => {
   color: var(--color-error);
 }
 
-/* Filter tabs */
 .filter-tabs {
   display: flex;
   border: 1px solid var(--color-border);
@@ -544,60 +404,5 @@ onUnmounted(() => {
   font-weight: 400;
   margin-left: 2px;
   opacity: 0.7;
-}
-
-/* Activity Log */
-.activity-log-section {
-  margin-top: 16px;
-}
-.activity-log-header {
-  cursor: pointer;
-  user-select: none;
-}
-.log-count {
-  font-weight: 400;
-  opacity: 0.6;
-  margin-left: 4px;
-}
-.activity-log-list {
-  max-height: 300px;
-  overflow-y: auto;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  padding: 8px;
-  background: var(--color-surface);
-}
-.log-entry {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  font-size: 12px;
-  padding: 4px 0;
-  border-bottom: 1px solid var(--color-border);
-}
-.log-entry:last-child {
-  border-bottom: none;
-}
-.log-time {
-  font-family: monospace;
-  color: var(--color-text-secondary);
-  flex-shrink: 0;
-  font-size: 11px;
-}
-.log-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  margin-top: 5px;
-  flex-shrink: 0;
-}
-.dot-info { background: var(--color-primary); }
-.dot-warning { background: var(--color-warning); }
-.log-message {
-  font-weight: 500;
-}
-.log-detail {
-  color: var(--color-text-secondary);
-  font-size: 11px;
 }
 </style>

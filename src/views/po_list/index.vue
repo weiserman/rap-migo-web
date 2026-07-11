@@ -81,7 +81,7 @@ async function loadPOs() {
 
 function selectPO(po) {
   storeActions.setSelectedPO(po);
-  router.push({ name: 'po_items', params: { poNumber: po.PurchaseOrder } });
+  router.push('/scanner');
 }
 </script>
 

@@ -8,6 +8,8 @@ import PoItems from '../views/po_items/index.vue';
 import PoLookup from '../views/po_lookup/index.vue';
 import ReceiptItem from '../views/receipt_item/index.vue';
 import ScannedGoods from '../views/scanned_goods/index.vue';
+import Scanner from '../views/scanner/index.vue';
+import ActivityLog from '../views/activity_log/index.vue';
 import PostingResults from '../views/posting_results/index.vue';
 import SyncStatus from '../views/sync_status/index.vue';
 import PinSetup from '../views/pinsetup/index.vue';
@@ -24,6 +26,8 @@ const routes = [
   { name: 'po_items', path: '/po_items/:poNumber', component: PoItems, props: true },
   { name: 'receipt_item', path: '/receipt_item/:itemId', component: ReceiptItem, props: true },
   { name: 'scanned_goods', path: '/scanned_goods', component: ScannedGoods },
+  { name: 'scanner', path: '/scanner', component: Scanner },
+  { name: 'activity_log', path: '/activity_log', component: ActivityLog },
   { name: 'posting_results', path: '/posting_results', component: PostingResults },
   { name: 'sync_status', path: '/sync_status', component: SyncStatus },
   { path: '/:catchAll(.*)*', redirect: '/home' },
